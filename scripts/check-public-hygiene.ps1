@@ -16,7 +16,7 @@ $patterns = @(
   "\bus[0-9]\b"
 )
 
-$trackedFiles = (& git -C $Root ls-files -z) -split [char]0 |
+$trackedFiles = & git -C $Root ls-files |
   Where-Object { $_ -and $_ -ne "scripts/check-public-hygiene.ps1" }
 
 $files = foreach ($path in $trackedFiles) {
