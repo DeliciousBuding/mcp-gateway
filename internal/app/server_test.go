@@ -833,6 +833,53 @@ func TestNotificationReturnsAcceptedWithoutBody(t *testing.T) {
 	}
 }
 
+func TestJSONRPCNotificationWithoutIDReturnsNoBody(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	rec := doMCP(t, srv, `{"jsonrpc":"2.0","method":"unknown/notification"}`)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("body = %q, want empty", rec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metrics := httptest.NewRecorder()
+	srv.ServeHTTP(metrics, req)
+	want := `mcp_gateway_rpc_requests_total{method="notification",status="accepted"} 1`
+	if !bytes.Contains(metrics.Body.Bytes(), []byte(want)) {
+		t.Fatalf("metrics missing %q in:\n%s", want, metrics.Body.String())
+	}
+	if bytes.Contains(metrics.Body.Bytes(), []byte("unknown/notification")) {
+		t.Fatalf("metrics should not expose arbitrary notification method names:\n%s", metrics.Body.String())
+	}
+}
+
+func TestJSONRPCNullIDIsStillARequest(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":null,"method":"unknown/request"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := decodeObject(t, rec.Body.Bytes())
+	errObj, ok := body["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing error in %s", rec.Body.String())
+	}
+	if errObj["code"] != float64(-32601) {
+		t.Fatalf("error code = %v, want -32601", errObj["code"])
+	}
+	if _, ok := body["id"]; !ok {
+		t.Fatalf("response omitted explicit null id: %s", rec.Body.String())
+	}
+}
+
 func TestStreamableHTTPHeaderValidation(t *testing.T) {
 	t.Parallel()
 

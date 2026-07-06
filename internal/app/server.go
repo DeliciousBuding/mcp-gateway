@@ -506,6 +506,11 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		writeRPC(w, req.ID, nil, rpcError{-32600, "invalid request"})
 		return
 	}
+	if !req.HasID {
+		s.metrics.incRPC("notification", "accepted")
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
 	switch req.Method {
 	case "initialize":
 		s.metrics.incRPC(req.Method, "ok")
@@ -796,8 +801,34 @@ func histogramLabels(names []string, values []string) string {
 type rpcRequest struct {
 	JSONRPC string `json:"jsonrpc"`
 	ID      any    `json:"id,omitempty"`
+	HasID   bool   `json:"-"`
 	Method  string `json:"method"`
 	Params  any    `json:"params,omitempty"`
+}
+
+func (r *rpcRequest) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	var raw struct {
+		JSONRPC string `json:"jsonrpc"`
+		Method  string `json:"method"`
+		Params  any    `json:"params,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	r.JSONRPC = raw.JSONRPC
+	r.Method = raw.Method
+	r.Params = raw.Params
+	if idRaw, ok := fields["id"]; ok {
+		r.HasID = true
+		if err := json.Unmarshal(idRaw, &r.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type rpcError struct {
