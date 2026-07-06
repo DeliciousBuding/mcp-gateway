@@ -16,14 +16,12 @@ $patterns = @(
   "\bus[0-9]\b"
 )
 
-$files = Get-ChildItem -LiteralPath $Root -Recurse -File -Force |
-  Where-Object {
-    $_.FullName -notmatch "\\\.git\\" -and
-    $_.FullName -notmatch "\\bin\\" -and
-    $_.FullName -notmatch "\\tmp\\" -and
-    $_.FullName -notmatch "\\dist\\" -and
-    $_.FullName -ne $PSCommandPath
-  }
+$trackedFiles = (& git -C $Root ls-files -z) -split [char]0 |
+  Where-Object { $_ -and $_ -ne "scripts/check-public-hygiene.ps1" }
+
+$files = foreach ($path in $trackedFiles) {
+  Get-Item -LiteralPath (Join-Path $Root $path)
+}
 
 $violations = @()
 foreach ($file in $files) {
