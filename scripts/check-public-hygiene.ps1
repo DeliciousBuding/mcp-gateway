@@ -17,6 +17,7 @@ $patterns = @(
 )
 
 $trackedFiles = & git -C $Root ls-files |
+  ForEach-Object { $_.Trim() } |
   Where-Object { $_ -and $_ -ne "scripts/check-public-hygiene.ps1" }
 
 $files = foreach ($path in $trackedFiles) {
