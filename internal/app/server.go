@@ -514,6 +514,9 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
 			"serverInfo":      map[string]any{"name": "mcp-gateway", "version": buildinfo.Version},
 		}, rpcError{})
+	case "ping":
+		s.metrics.incRPC(req.Method, "ok")
+		writeRPC(w, req.ID, map[string]any{}, rpcError{})
 	case "notifications/initialized":
 		s.metrics.incRPC(req.Method, "ok")
 		w.WriteHeader(http.StatusAccepted)

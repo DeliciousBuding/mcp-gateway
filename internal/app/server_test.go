@@ -749,6 +749,30 @@ func TestInitializeReturnsToolsCapability(t *testing.T) {
 	}
 }
 
+func TestPingReturnsEmptyResult(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":1,"method":"ping"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := decodeObject(t, rec.Body.Bytes())
+	result, ok := body["result"].(map[string]any)
+	if !ok || len(result) != 0 {
+		t.Fatalf("result = %#v, want empty object", body["result"])
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metrics := httptest.NewRecorder()
+	srv.ServeHTTP(metrics, req)
+	want := `mcp_gateway_rpc_requests_total{method="ping",status="ok"} 1`
+	if !bytes.Contains(metrics.Body.Bytes(), []byte(want)) {
+		t.Fatalf("metrics missing %q in:\n%s", want, metrics.Body.String())
+	}
+}
+
 func TestRejectsUnsupportedProtocolVersionHeader(t *testing.T) {
 	t.Parallel()
 

@@ -60,6 +60,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Unauthorized MCP responses include `WWW-Authenticate: Bearer resource_metadata="..."`, pointing clients at `/.well-known/oauth-protected-resource`.
 - MCP Streamable HTTP `POST /mcp` requires `Content-Type: application/json` and an `Accept` header compatible with both `application/json` and `text/event-stream`.
 - Requests with `MCP-Protocol-Version` must use `2025-06-18`; omitted versions are treated as the current supported version.
+- MCP JSON-RPC `ping` is supported and returns an empty result for client/server liveness checks.
 - SQLite runs with WAL, `synchronous=NORMAL`, and one writer connection for predictable low-memory operation.
 - Short-lived SQLite response cache is enabled by default; tune `MCP_GATEWAY_CACHE_TTL` or set `use_cache=false` per tool call.
 - Background SQLite cleanup is controlled by `MCP_GATEWAY_CLEANUP_INTERVAL`; `MCP_GATEWAY_AUDIT_RETENTION` limits audit growth while expired cache entries are always pruned.
