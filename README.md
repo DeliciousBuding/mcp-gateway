@@ -19,6 +19,7 @@ Get-Content .env | ForEach-Object {
   if ($_ -match '^\s*([^#][^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') }
 }
 go run ./cmd/mcp-gateway --check-config
+go run ./cmd/mcp-gateway --print-config
 go run ./cmd/mcp-gateway --version
 go run ./cmd/mcp-gateway
 ```
@@ -51,6 +52,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - HTTPS `MCP_GATEWAY_PUBLIC_BASE_URL` requires at least one API key at startup; this prevents accidental anonymous public exposure.
 - `GROK_API_URL`, `MCP_GATEWAY_PUBLIC_BASE_URL`, `MCP_GATEWAY_ALLOWED_ORIGINS`, and `MCP_GATEWAY_AUTHORIZATION_SERVERS` are validated at startup to catch malformed deployment config early. `GROK_API_URL` is required only when `GROK_ENABLED=true`.
 - Run `mcp-gateway --check-config` in CI or before deployment. It validates effective configuration and exits without opening SQLite or listening on a port.
+- Run `mcp-gateway --print-config` during deployment diagnostics. It validates effective configuration, prints redacted JSON, and exits without opening SQLite or listening on a port.
 - Run `mcp-gateway --version` to print build metadata. Release builds can inject `Version`, `Commit`, and `Date` with Go ldflags or Docker build args.
 - Set `MCP_GATEWAY_ALLOWED_ORIGINS` for browser-based clients. This is the DNS rebinding/CORS boundary: requests that carry an `Origin` header are rejected unless the origin is explicitly allowed or derived from `MCP_GATEWAY_PUBLIC_BASE_URL`; non-browser agents without an `Origin` header continue to work.
 - Set `MCP_GATEWAY_AUTHORIZATION_SERVERS` when an OAuth issuer should be advertised to OAuth-aware MCP clients.

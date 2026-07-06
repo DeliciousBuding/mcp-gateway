@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -36,6 +37,7 @@ func runWithArgs(args []string, environ map[string]string, stdout io.Writer) err
 	var authorizationServers string
 	var logLevel string
 	var checkConfig bool
+	var printConfig bool
 	var showVersion bool
 	var grokEnabled bool
 	getenv := envGetter(environ)
@@ -61,6 +63,7 @@ func runWithArgs(args []string, environ map[string]string, stdout io.Writer) err
 	flags.Int64Var(&cfg.MaxBodyBytes, "max-body-bytes", int64Env(getenv, "MCP_GATEWAY_MAX_BODY_BYTES", 1<<20), "max MCP JSON request body bytes")
 	flags.StringVar(&logLevel, "log-level", getenv("MCP_GATEWAY_LOG_LEVEL", "info"), "debug|info|warn|error")
 	flags.BoolVar(&checkConfig, "check-config", false, "validate configuration and exit without opening the database or listening")
+	flags.BoolVar(&printConfig, "print-config", false, "print validated effective configuration with secrets redacted and exit")
 	flags.BoolVar(&showVersion, "version", false, "print version and exit")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -81,6 +84,15 @@ func runWithArgs(args []string, environ map[string]string, stdout io.Writer) err
 		}
 		_, _ = fmt.Fprintln(stdout, "configuration ok")
 		return nil
+	}
+	if printConfig {
+		effective, err := app.RedactedEffectiveConfig(cfg)
+		if err != nil {
+			return err
+		}
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(effective)
 	}
 
 	handler, err := app.NewServer(cfg)

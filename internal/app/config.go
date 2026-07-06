@@ -31,9 +31,40 @@ type Config struct {
 	Logger               *slog.Logger
 }
 
+type RedactedConfig struct {
+	Addr                     string   `json:"addr"`
+	PublicBaseURL            string   `json:"public_base_url,omitempty"`
+	DatabaseURL              string   `json:"database_url"`
+	GrokEnabled              bool     `json:"grok_enabled"`
+	GrokAPIURLConfigured     bool     `json:"grok_api_url_configured"`
+	GrokAPIKeyConfigured     bool     `json:"grok_api_key_configured"`
+	GrokDefaultModel         string   `json:"grok_default_model,omitempty"`
+	APIKeyCount              int      `json:"api_key_count"`
+	ScopedAPIKeyCount        int      `json:"scoped_api_key_count"`
+	AllowedOrigins           []string `json:"allowed_origins,omitempty"`
+	AuthorizationServerCount int      `json:"authorization_server_count"`
+	ProtectMetrics           bool     `json:"protect_metrics"`
+	UpstreamTimeout          string   `json:"upstream_timeout"`
+	MaxConcurrency           int      `json:"max_concurrency"`
+	RateLimitPerMin          int      `json:"rate_limit_per_min"`
+	MaxBodyBytes             int64    `json:"max_body_bytes"`
+	CacheTTL                 string   `json:"cache_ttl"`
+	AuditRetention           string   `json:"audit_retention"`
+	CleanupInterval          string   `json:"cleanup_interval"`
+	BrowserOriginProtection  bool     `json:"browser_origin_protection"`
+}
+
 func CheckConfig(c Config) error {
 	c = c.normalized()
 	return c.validate()
+}
+
+func RedactedEffectiveConfig(c Config) (RedactedConfig, error) {
+	c = c.normalized()
+	if err := c.validate(); err != nil {
+		return RedactedConfig{}, err
+	}
+	return c.redacted(), nil
 }
 
 func (c Config) normalized() Config {
@@ -98,6 +129,37 @@ func (c Config) validate() error {
 		}
 	}
 	return nil
+}
+
+func (c Config) redacted() RedactedConfig {
+	scoped := 0
+	for _, entry := range c.APIKeys {
+		if strings.Contains(entry, "=") {
+			scoped++
+		}
+	}
+	return RedactedConfig{
+		Addr:                     c.Addr,
+		PublicBaseURL:            c.PublicBaseURL,
+		DatabaseURL:              c.DatabaseURL,
+		GrokEnabled:              !c.GrokDisabled,
+		GrokAPIURLConfigured:     strings.TrimSpace(c.GrokAPIURL) != "",
+		GrokAPIKeyConfigured:     strings.TrimSpace(c.GrokAPIKey) != "",
+		GrokDefaultModel:         c.GrokDefaultModel,
+		APIKeyCount:              len(c.APIKeys),
+		ScopedAPIKeyCount:        scoped,
+		AllowedOrigins:           append([]string(nil), c.AllowedOrigins...),
+		AuthorizationServerCount: len(c.AuthorizationServers),
+		ProtectMetrics:           c.ProtectMetrics,
+		UpstreamTimeout:          c.UpstreamTimeout.String(),
+		MaxConcurrency:           c.MaxConcurrency,
+		RateLimitPerMin:          c.RateLimitPerMin,
+		MaxBodyBytes:             c.MaxBodyBytes,
+		CacheTTL:                 c.CacheTTL.String(),
+		AuditRetention:           c.AuditRetention.String(),
+		CleanupInterval:          c.CleanupInterval.String(),
+		BrowserOriginProtection:  true,
+	}
 }
 
 func validateHTTPURL(label, rawURL string) error {

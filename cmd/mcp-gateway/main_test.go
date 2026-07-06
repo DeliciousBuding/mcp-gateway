@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -113,6 +114,47 @@ func TestCheckConfigAllowsGrokDisabledWithoutUpstreamURL(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "configuration ok") {
 		t.Fatalf("expected success output, got %q", stdout.String())
+	}
+}
+
+func TestPrintConfigRedactsSecretsAndDoesNotOpenDatabase(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "gateway.db")
+	var stdout bytes.Buffer
+
+	err := runWithArgs([]string{
+		"-print-config",
+		"-public-base-url", "https://mcp.example.com/mcp",
+		"-database", dbPath,
+		"-api-keys", "test-token,scoped-token=tool:grok_search|provider:grok",
+		"-grok-api-url", "https://private-provider.example/v1/chat/completions",
+		"-grok-api-key", "secret-upstream-key",
+		"-allowed-origins", "https://agents.example.com",
+	}, map[string]string{}, &stdout)
+
+	if err != nil {
+		t.Fatalf("print config failed: %v", err)
+	}
+	raw := stdout.String()
+	for _, leaked := range []string{"test-token", "scoped-token", "secret-upstream-key", "private-provider.example"} {
+		if strings.Contains(raw, leaked) {
+			t.Fatalf("print-config leaked %q in %s", leaked, raw)
+		}
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &cfg); err != nil {
+		t.Fatalf("print-config did not output JSON: %v\n%s", err, raw)
+	}
+	if cfg["api_key_count"] != float64(2) {
+		t.Fatalf("api_key_count = %v, want 2 in %s", cfg["api_key_count"], raw)
+	}
+	if cfg["scoped_api_key_count"] != float64(1) {
+		t.Fatalf("scoped_api_key_count = %v, want 1 in %s", cfg["scoped_api_key_count"], raw)
+	}
+	if cfg["grok_api_url_configured"] != true || cfg["grok_api_key_configured"] != true {
+		t.Fatalf("grok configured flags missing in %s", raw)
+	}
+	if _, err := os.Stat(dbPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("print-config created database file %s", dbPath)
 	}
 }
 
