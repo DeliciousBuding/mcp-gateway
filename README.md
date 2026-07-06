@@ -58,7 +58,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Browser preflight responses allow `Authorization`, `Content-Type`, `Accept`, `MCP-Protocol-Version`, `X-Request-Id`, and `Mcp-Session-Id`.
 - Set `MCP_GATEWAY_AUTHORIZATION_SERVERS` when an OAuth issuer should be advertised to OAuth-aware MCP clients.
 - Keep `MCP_GATEWAY_PROTECT_METRICS=true` on public hosts unless a private network or reverse proxy already protects `/metrics`.
-- Unauthorized MCP responses include `WWW-Authenticate: Bearer resource_metadata="..."`, pointing clients at `/.well-known/oauth-protected-resource`.
+- Unauthorized MCP responses include `WWW-Authenticate: Bearer resource_metadata="..."`, pointing clients at the RFC 9728 protected-resource metadata URL. For path-based resources such as `/mcp`, the gateway also serves `/.well-known/oauth-protected-resource/mcp` while keeping the root well-known endpoint for compatibility.
 - MCP Streamable HTTP `POST /mcp` requires `Content-Type: application/json` and an `Accept` header compatible with both `application/json` and `text/event-stream`.
 - Requests with `MCP-Protocol-Version` must use `2025-06-18`; omitted versions are treated as the current supported version.
 - MCP JSON-RPC `ping` is supported and returns an empty result for client/server liveness checks.

@@ -297,6 +297,7 @@ func (s *Server) routes() {
 		s.writeMetrics(w)
 	})
 	s.mux.HandleFunc("/.well-known/oauth-protected-resource", s.handleOAuthProtectedResourceMetadata)
+	s.mux.HandleFunc("/.well-known/oauth-protected-resource/", s.handleOAuthProtectedResourceMetadata)
 	s.mux.HandleFunc("/mcp", s.trackHTTP("/mcp", s.withSecurity(s.auth(s.handleMCP))))
 }
 
@@ -456,7 +457,11 @@ func (s *Server) protectedResourceMetadataURL() string {
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return "/.well-known/oauth-protected-resource"
 	}
+	resourcePath := strings.TrimLeft(u.Path, "/")
 	u.Path = "/.well-known/oauth-protected-resource"
+	if resourcePath != "" {
+		u.Path += "/" + resourcePath
+	}
 	u.RawQuery = ""
 	u.Fragment = ""
 	return u.String()

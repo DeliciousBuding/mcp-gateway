@@ -35,6 +35,35 @@ func TestServerRejectsMissingBearerToken(t *testing.T) {
 	}
 }
 
+func TestUnauthorizedChallengeUsesPathAwareResourceMetadataURL(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		PublicBaseURL:    "https://mcp.example.com/mcp",
+		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:       "http://127.0.0.1:1",
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"test-token"},
+		UpstreamTimeout:  time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  60,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	wantChallenge := `Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"`
+	if got := rec.Header().Get("WWW-Authenticate"); got != wantChallenge {
+		t.Fatalf("WWW-Authenticate = %q, want %q", got, wantChallenge)
+	}
+}
+
 func TestOAuthProtectedResourceMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -51,24 +80,28 @@ func TestOAuthProtectedResourceMetadata(t *testing.T) {
 		MaxConcurrency:       4,
 		RateLimitPerMin:      60,
 	})
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
-	rec := httptest.NewRecorder()
+	for _, path := range []string{"/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
 
-	srv.ServeHTTP(rec, req)
+			srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
-	}
-	body := decodeObject(t, rec.Body.Bytes())
-	if body["resource"] != "https://mcp.example.com/mcp" {
-		t.Fatalf("resource = %v", body["resource"])
-	}
-	authServers := body["authorization_servers"].([]any)
-	if len(authServers) != 1 || authServers[0] != "https://auth.example.com" {
-		t.Fatalf("authorization_servers = %#v", authServers)
-	}
-	if body["mcp_protocol_version"] != "2025-06-18" {
-		t.Fatalf("mcp_protocol_version = %v", body["mcp_protocol_version"])
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			body := decodeObject(t, rec.Body.Bytes())
+			if body["resource"] != "https://mcp.example.com/mcp" {
+				t.Fatalf("resource = %v", body["resource"])
+			}
+			authServers := body["authorization_servers"].([]any)
+			if len(authServers) != 1 || authServers[0] != "https://auth.example.com" {
+				t.Fatalf("authorization_servers = %#v", authServers)
+			}
+			if body["mcp_protocol_version"] != "2025-06-18" {
+				t.Fatalf("mcp_protocol_version = %v", body["mcp_protocol_version"])
+			}
+		})
 	}
 }
 
