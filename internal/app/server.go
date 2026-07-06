@@ -1143,7 +1143,9 @@ func (t *grokSearchTool) Call(ctx context.Context, args map[string]any) (ToolCal
 }
 
 func (t *grokSearchTool) cacheKey(query, model string, maxTokens int) string {
-	return fmt.Sprintf("%s:%t:%t:%s:%d:%s", t.name, t.jsonMode, t.sourcesOnly, model, maxTokens, strings.TrimSpace(query))
+	raw := fmt.Sprintf("%s\x00%t\x00%t\x00%s\x00%d\x00%s", t.name, t.jsonMode, t.sourcesOnly, model, maxTokens, strings.TrimSpace(query))
+	sum := sha256.Sum256([]byte(raw))
+	return "grok:" + hex.EncodeToString(sum[:])
 }
 
 func intFromAny(v any) int {

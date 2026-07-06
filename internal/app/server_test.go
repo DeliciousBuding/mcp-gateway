@@ -293,10 +293,11 @@ func TestMetricsCountsToolCallsAndCacheResults(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 
+	dbPath := filepath.Join(t.TempDir(), "audit.db")
 	srv := newTestServer(t, &app.Config{
 		Addr:             "127.0.0.1:0",
 		PublicBaseURL:    "http://example.invalid",
-		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		DatabaseURL:      dbPath,
 		GrokAPIURL:       upstream.URL,
 		GrokAPIKey:       "upstream-key",
 		GrokDefaultModel: "grok-test",
@@ -306,7 +307,7 @@ func TestMetricsCountsToolCallsAndCacheResults(t *testing.T) {
 		MaxConcurrency:   4,
 		RateLimitPerMin:  60,
 	})
-	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"grok_search","arguments":{"query":"cache metric test"}}}`
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"grok_search","arguments":{"query":"cache metric test SECRET_CACHE_QUERY"}}}`
 	first := doMCP(t, srv, body)
 	if first.Code != http.StatusOK {
 		t.Fatalf("first status = %d body=%s", first.Code, first.Body.String())
@@ -317,6 +318,19 @@ func TestMetricsCountsToolCallsAndCacheResults(t *testing.T) {
 	}
 	if got := upstreamCalls.Load(); got != 1 {
 		t.Fatalf("upstream calls = %d, want 1", got)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var cacheKey string
+	if err := db.QueryRowContext(context.Background(), `select cache_key from response_cache limit 1`).Scan(&cacheKey); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains([]byte(cacheKey), []byte("SECRET_CACHE_QUERY")) || bytes.Contains([]byte(cacheKey), []byte("cache metric test")) {
+		t.Fatalf("cache key leaked query text: %q", cacheKey)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
