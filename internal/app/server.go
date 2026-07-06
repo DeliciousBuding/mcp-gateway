@@ -151,9 +151,9 @@ func NewServer(cfg Config) (*Server, error) {
 			DefaultModel: cfg.GrokDefaultModel,
 			Timeout:      cfg.UpstreamTimeout,
 		})
-		s.RegisterTool(newGrokSearchTool("grok_search", "Search the web through the configured Grok upstream and return an answer with sources.", grokClient, st, cfg.CacheTTL, false, false))
-		s.RegisterTool(newGrokSearchTool("grok_extract", "Extract structured JSON from web context through the configured Grok upstream.", grokClient, st, cfg.CacheTTL, true, false))
-		s.RegisterTool(newGrokSearchTool("grok_sources", "Return only sources discovered by the configured Grok upstream.", grokClient, st, cfg.CacheTTL, false, true))
+		s.RegisterTool(newGrokSearchTool("grok_search", "Search the web through the configured Grok upstream and return an answer with sources.", grokClient, st, cfg.CacheTTL, cfg.GrokMaxQueryBytes, false, false))
+		s.RegisterTool(newGrokSearchTool("grok_extract", "Extract structured JSON from web context through the configured Grok upstream.", grokClient, st, cfg.CacheTTL, cfg.GrokMaxQueryBytes, true, false))
+		s.RegisterTool(newGrokSearchTool("grok_sources", "Return only sources discovered by the configured Grok upstream.", grokClient, st, cfg.CacheTTL, cfg.GrokMaxQueryBytes, false, true))
 	}
 	if _, err := s.prune(context.Background()); err != nil {
 		_ = st.Close()
@@ -1033,16 +1033,17 @@ type grokSearchTool struct {
 	client      interface {
 		Search(context.Context, grok.SearchRequest) (grok.SearchResponse, error)
 	}
-	cache       *store.Store
-	cacheTTL    time.Duration
-	jsonMode    bool
-	sourcesOnly bool
+	cache         *store.Store
+	cacheTTL      time.Duration
+	maxQueryBytes int
+	jsonMode      bool
+	sourcesOnly   bool
 }
 
 func newGrokSearchTool(name, description string, client interface {
 	Search(context.Context, grok.SearchRequest) (grok.SearchResponse, error)
-}, cache *store.Store, cacheTTL time.Duration, jsonMode, sourcesOnly bool) *grokSearchTool {
-	return &grokSearchTool{name: name, description: description, client: client, cache: cache, cacheTTL: cacheTTL, jsonMode: jsonMode, sourcesOnly: sourcesOnly}
+}, cache *store.Store, cacheTTL time.Duration, maxQueryBytes int, jsonMode, sourcesOnly bool) *grokSearchTool {
+	return &grokSearchTool{name: name, description: description, client: client, cache: cache, cacheTTL: cacheTTL, maxQueryBytes: maxQueryBytes, jsonMode: jsonMode, sourcesOnly: sourcesOnly}
 }
 
 func (t *grokSearchTool) Definition() ToolDefinition {
@@ -1054,7 +1055,7 @@ func (t *grokSearchTool) Definition() ToolDefinition {
 			"type":     "object",
 			"required": []string{"query"},
 			"properties": map[string]any{
-				"query":      map[string]any{"type": "string", "description": "Full natural-language research brief. Include what to find, context, and desired output."},
+				"query":      map[string]any{"type": "string", "description": "Full natural-language research brief. Include what to find, context, and desired output.", "maxLength": t.maxQueryBytes},
 				"model":      map[string]any{"type": "string"},
 				"max_tokens": map[string]any{"type": "integer", "minimum": 1, "maximum": 8192},
 				"use_cache":  map[string]any{"type": "boolean", "description": "Use short-lived SQLite response cache. Defaults to true."},
@@ -1095,6 +1096,9 @@ func (t *grokSearchTool) Call(ctx context.Context, args map[string]any) (ToolCal
 	query, _ := args["query"].(string)
 	if strings.TrimSpace(query) == "" {
 		return ToolCallResult{}, errors.New("query is required")
+	}
+	if len([]byte(strings.TrimSpace(query))) > t.maxQueryBytes {
+		return ToolCallResult{}, fmt.Errorf("query exceeds max query size of %d bytes", t.maxQueryBytes)
 	}
 	model, _ := args["model"].(string)
 	maxTokens := 0

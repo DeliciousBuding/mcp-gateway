@@ -49,6 +49,7 @@ func runWithArgs(args []string, environ map[string]string, stdout io.Writer) err
 	flags.StringVar(&cfg.GrokAPIURL, "grok-api-url", getenv("GROK_API_URL", ""), "Grok OpenAI-compatible chat completions URL")
 	flags.StringVar(&cfg.GrokAPIKey, "grok-api-key", getenv("GROK_API_KEY", ""), "Grok upstream API key")
 	flags.StringVar(&cfg.GrokDefaultModel, "grok-default-model", getenv("GROK_DEFAULT_MODEL", "grok-4.3-fast"), "default Grok model")
+	flags.IntVar(&cfg.GrokMaxQueryBytes, "grok-max-query-bytes", intEnv(getenv, "GROK_MAX_QUERY_BYTES", 32<<10), "max Grok query bytes")
 	flags.BoolVar(&grokEnabled, "grok-enabled", boolEnv(getenv, "GROK_ENABLED", true), "register built-in Grok tools")
 	flags.StringVar(&apiKeys, "api-keys", getenv("MCP_GATEWAY_API_KEYS", ""), "comma-separated bearer tokens")
 	flags.StringVar(&allowedOrigins, "allowed-origins", getenv("MCP_GATEWAY_ALLOWED_ORIGINS", ""), "comma-separated allowed browser origins")

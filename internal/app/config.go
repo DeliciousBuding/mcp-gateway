@@ -16,6 +16,7 @@ type Config struct {
 	GrokAPIURL           string
 	GrokAPIKey           string
 	GrokDefaultModel     string
+	GrokMaxQueryBytes    int
 	GrokDisabled         bool
 	APIKeys              []string
 	AllowedOrigins       []string
@@ -40,6 +41,7 @@ type RedactedConfig struct {
 	GrokAPIURLConfigured     bool     `json:"grok_api_url_configured"`
 	GrokAPIKeyConfigured     bool     `json:"grok_api_key_configured"`
 	GrokDefaultModel         string   `json:"grok_default_model,omitempty"`
+	GrokMaxQueryBytes        int      `json:"grok_max_query_bytes"`
 	APIKeyCount              int      `json:"api_key_count"`
 	ScopedAPIKeyCount        int      `json:"scoped_api_key_count"`
 	AllowedOrigins           []string `json:"allowed_origins,omitempty"`
@@ -87,6 +89,9 @@ func (c Config) normalized() Config {
 	}
 	if c.MaxBodyBytes <= 0 {
 		c.MaxBodyBytes = 1 << 20
+	}
+	if c.GrokMaxQueryBytes <= 0 {
+		c.GrokMaxQueryBytes = 32 << 10
 	}
 	if c.AuditRetention < 0 {
 		c.AuditRetention = 0
@@ -148,6 +153,7 @@ func (c Config) redacted() RedactedConfig {
 		GrokAPIURLConfigured:     strings.TrimSpace(c.GrokAPIURL) != "",
 		GrokAPIKeyConfigured:     strings.TrimSpace(c.GrokAPIKey) != "",
 		GrokDefaultModel:         c.GrokDefaultModel,
+		GrokMaxQueryBytes:        c.GrokMaxQueryBytes,
 		APIKeyCount:              len(c.APIKeys),
 		ScopedAPIKeyCount:        scoped,
 		AllowedOrigins:           append([]string(nil), c.AllowedOrigins...),

@@ -153,6 +153,9 @@ func TestPrintConfigRedactsSecretsAndDoesNotOpenDatabase(t *testing.T) {
 	if cfg["grok_api_url_configured"] != true || cfg["grok_api_key_configured"] != true {
 		t.Fatalf("grok configured flags missing in %s", raw)
 	}
+	if cfg["grok_max_query_bytes"] != float64(32768) {
+		t.Fatalf("grok_max_query_bytes = %v, want 32768 in %s", cfg["grok_max_query_bytes"], raw)
+	}
 	if cfg["audit_remote_addr"] != false {
 		t.Fatalf("audit_remote_addr = %v, want false in %s", cfg["audit_remote_addr"], raw)
 	}

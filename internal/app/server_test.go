@@ -404,6 +404,56 @@ func TestGrokToolRejectsInvalidMaxTokensBeforeUpstream(t *testing.T) {
 	}
 }
 
+func TestGrokToolRejectsQueryOverConfiguredLimitBeforeUpstream(t *testing.T) {
+	t.Parallel()
+
+	var upstreamCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{
+				map[string]any{
+					"message": map[string]any{"content": "should not be called"},
+				},
+			},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+
+	srv := newTestServer(t, &app.Config{
+		Addr:              "127.0.0.1:0",
+		PublicBaseURL:     "http://example.invalid",
+		DatabaseURL:       filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:        upstream.URL,
+		GrokAPIKey:        "upstream-key",
+		GrokDefaultModel:  "grok-test",
+		GrokMaxQueryBytes: 8,
+		APIKeys:           []string{"test-token"},
+		CacheTTL:          time.Minute,
+		UpstreamTimeout:   time.Second,
+		MaxConcurrency:    4,
+		RateLimitPerMin:   60,
+	})
+
+	rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"grok_search","arguments":{"query":"this query is too long"}}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	decoded := decodeObject(t, rec.Body.Bytes())
+	result := decoded["result"].(map[string]any)
+	if result["isError"] != true {
+		t.Fatalf("result = %#v, want tool error", result)
+	}
+	content := result["content"].([]any)
+	text := content[0].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "query") || !strings.Contains(text, "bytes") {
+		t.Fatalf("error text = %q, want query byte limit error", text)
+	}
+	if got := upstreamCalls.Load(); got != 0 {
+		t.Fatalf("upstream calls = %d, want 0", got)
+	}
+}
+
 func TestMetricsCanRequireBearerToken(t *testing.T) {
 	t.Parallel()
 
