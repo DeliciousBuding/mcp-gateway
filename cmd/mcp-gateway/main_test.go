@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/DeliciousBuding/mcp-gateway/internal/buildinfo"
 )
 
 func TestCheckConfigValidatesWithoutOpeningDatabase(t *testing.T) {
@@ -51,6 +53,27 @@ func TestCheckConfigReturnsValidationErrors(t *testing.T) {
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("expected no success output, got %q", stdout.String())
+	}
+}
+
+func TestVersionFlagPrintsBuildMetadata(t *testing.T) {
+	oldVersion, oldCommit, oldDate := buildinfo.Version, buildinfo.Commit, buildinfo.Date
+	buildinfo.Version = "v1.2.3"
+	buildinfo.Commit = "abc123"
+	buildinfo.Date = "2026-07-07T00:00:00Z"
+	t.Cleanup(func() {
+		buildinfo.Version, buildinfo.Commit, buildinfo.Date = oldVersion, oldCommit, oldDate
+	})
+	var stdout bytes.Buffer
+
+	err := runWithArgs([]string{"-version"}, nil, &stdout)
+
+	if err != nil {
+		t.Fatalf("version failed: %v", err)
+	}
+	want := "mcp-gateway v1.2.3 abc123 2026-07-07T00:00:00Z"
+	if strings.TrimSpace(stdout.String()) != want {
+		t.Fatalf("version output = %q, want %q", strings.TrimSpace(stdout.String()), want)
 	}
 }
 

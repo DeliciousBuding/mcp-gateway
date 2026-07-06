@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/DeliciousBuding/mcp-gateway/internal/app"
+	"github.com/DeliciousBuding/mcp-gateway/internal/buildinfo"
 )
 
 func main() {
@@ -35,6 +36,7 @@ func runWithArgs(args []string, environ map[string]string, stdout io.Writer) err
 	var authorizationServers string
 	var logLevel string
 	var checkConfig bool
+	var showVersion bool
 	var grokEnabled bool
 	getenv := envGetter(environ)
 	flags := flag.NewFlagSet("mcp-gateway", flag.ContinueOnError)
@@ -59,11 +61,16 @@ func runWithArgs(args []string, environ map[string]string, stdout io.Writer) err
 	flags.Int64Var(&cfg.MaxBodyBytes, "max-body-bytes", int64Env(getenv, "MCP_GATEWAY_MAX_BODY_BYTES", 1<<20), "max MCP JSON request body bytes")
 	flags.StringVar(&logLevel, "log-level", getenv("MCP_GATEWAY_LOG_LEVEL", "info"), "debug|info|warn|error")
 	flags.BoolVar(&checkConfig, "check-config", false, "validate configuration and exit without opening the database or listening")
+	flags.BoolVar(&showVersion, "version", false, "print version and exit")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 
 	setupLogger(logLevel)
+	if showVersion {
+		_, _ = fmt.Fprintln(stdout, buildinfo.String())
+		return nil
+	}
 	cfg.APIKeys = splitCSV(apiKeys)
 	cfg.AllowedOrigins = splitCSV(allowedOrigins)
 	cfg.AuthorizationServers = splitCSV(authorizationServers)

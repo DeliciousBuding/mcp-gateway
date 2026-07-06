@@ -239,7 +239,7 @@ func TestMetricsExposesOperationalCounters(t *testing.T) {
 		t.Fatalf("Content-Type = %q", ct)
 	}
 	for _, want := range []string{
-		`mcp_gateway_build_info{service="mcp-gateway"} 1`,
+		`mcp_gateway_build_info{service="mcp-gateway",version="dev",commit="none",date="unknown"} 1`,
 		`mcp_gateway_tools_registered 3`,
 		`mcp_gateway_upstream_inflight 0`,
 		`mcp_gateway_http_requests_total{route="/mcp",method="POST",status="200"} 1`,
@@ -743,6 +743,9 @@ func TestInitializeReturnsToolsCapability(t *testing.T) {
 	serverInfo := result["serverInfo"].(map[string]any)
 	if serverInfo["name"] != "mcp-gateway" {
 		t.Fatalf("serverInfo.name = %v", serverInfo["name"])
+	}
+	if serverInfo["version"] != "dev" {
+		t.Fatalf("serverInfo.version = %v", serverInfo["version"])
 	}
 }
 

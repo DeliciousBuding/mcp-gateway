@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/DeliciousBuding/mcp-gateway/internal/buildinfo"
 	"github.com/DeliciousBuding/mcp-gateway/internal/grok"
 	"github.com/DeliciousBuding/mcp-gateway/internal/store"
 )
@@ -284,7 +285,7 @@ func (s *Server) routes() {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = fmt.Fprintf(w, "# HELP mcp_gateway_build_info Static build information for the gateway.\n")
 		_, _ = fmt.Fprintf(w, "# TYPE mcp_gateway_build_info gauge\n")
-		_, _ = fmt.Fprintf(w, "mcp_gateway_build_info{service=\"mcp-gateway\"} 1\n")
+		_, _ = fmt.Fprintf(w, "mcp_gateway_build_info{service=\"mcp-gateway\",version=%q,commit=%q,date=%q} 1\n", buildinfo.Version, buildinfo.Commit, buildinfo.Date)
 		_, _ = fmt.Fprintf(w, "# HELP mcp_gateway_tools_registered Number of registered MCP tools.\n")
 		_, _ = fmt.Fprintf(w, "# TYPE mcp_gateway_tools_registered gauge\n")
 		_, _ = fmt.Fprintf(w, "mcp_gateway_tools_registered %d\n", len(s.tools))
@@ -511,7 +512,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		writeRPC(w, req.ID, map[string]any{
 			"protocolVersion": protocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
-			"serverInfo":      map[string]any{"name": "mcp-gateway", "version": "0.1.0"},
+			"serverInfo":      map[string]any{"name": "mcp-gateway", "version": buildinfo.Version},
 		}, rpcError{})
 	case "notifications/initialized":
 		s.metrics.incRPC(req.Method, "ok")
