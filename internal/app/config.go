@@ -16,6 +16,7 @@ type Config struct {
 	GrokAPIURL           string
 	GrokAPIKey           string
 	GrokDefaultModel     string
+	GrokDisabled         bool
 	APIKeys              []string
 	AllowedOrigins       []string
 	AuthorizationServers []string
@@ -72,8 +73,10 @@ func (c Config) validate() error {
 	if err := validateAPIKeys(c.APIKeys); err != nil {
 		return err
 	}
-	if err := validateHTTPURL("grok API URL", c.GrokAPIURL); err != nil {
-		return err
+	if !c.GrokDisabled {
+		if err := validateHTTPURL("grok API URL", c.GrokAPIURL); err != nil {
+			return err
+		}
 	}
 	if c.PublicBaseURL != "" {
 		if err := validateHTTPURL("public base URL", c.PublicBaseURL); err != nil {

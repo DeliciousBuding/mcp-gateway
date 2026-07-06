@@ -399,6 +399,31 @@ func TestToolsListReturnsGrokTools(t *testing.T) {
 	}
 }
 
+func TestGrokProviderCanBeDisabledWithoutUpstreamConfig(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, &app.Config{
+		Addr:            "127.0.0.1:0",
+		PublicBaseURL:   "http://example.invalid",
+		DatabaseURL:     filepath.Join(t.TempDir(), "audit.db"),
+		APIKeys:         []string{"test-token"},
+		UpstreamTimeout: time.Second,
+		MaxConcurrency:  4,
+		RateLimitPerMin: 60,
+		GrokDisabled:    true,
+	})
+	rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := decodeObject(t, rec.Body.Bytes())
+	tools := body["result"].(map[string]any)["tools"].([]any)
+	if len(tools) != 0 {
+		t.Fatalf("tools = %#v, want none when Grok is disabled", tools)
+	}
+}
+
 func TestScopedAPIKeyFiltersToolsList(t *testing.T) {
 	t.Parallel()
 

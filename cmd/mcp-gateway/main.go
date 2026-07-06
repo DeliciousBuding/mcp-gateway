@@ -35,6 +35,7 @@ func runWithArgs(args []string, environ map[string]string, stdout io.Writer) err
 	var authorizationServers string
 	var logLevel string
 	var checkConfig bool
+	var grokEnabled bool
 	getenv := envGetter(environ)
 	flags := flag.NewFlagSet("mcp-gateway", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -44,6 +45,7 @@ func runWithArgs(args []string, environ map[string]string, stdout io.Writer) err
 	flags.StringVar(&cfg.GrokAPIURL, "grok-api-url", getenv("GROK_API_URL", ""), "Grok OpenAI-compatible chat completions URL")
 	flags.StringVar(&cfg.GrokAPIKey, "grok-api-key", getenv("GROK_API_KEY", ""), "Grok upstream API key")
 	flags.StringVar(&cfg.GrokDefaultModel, "grok-default-model", getenv("GROK_DEFAULT_MODEL", "grok-4.3-fast"), "default Grok model")
+	flags.BoolVar(&grokEnabled, "grok-enabled", boolEnv(getenv, "GROK_ENABLED", true), "register built-in Grok tools")
 	flags.StringVar(&apiKeys, "api-keys", getenv("MCP_GATEWAY_API_KEYS", ""), "comma-separated bearer tokens")
 	flags.StringVar(&allowedOrigins, "allowed-origins", getenv("MCP_GATEWAY_ALLOWED_ORIGINS", ""), "comma-separated allowed browser origins")
 	flags.StringVar(&authorizationServers, "authorization-servers", getenv("MCP_GATEWAY_AUTHORIZATION_SERVERS", ""), "comma-separated OAuth authorization server issuer URLs")
@@ -65,6 +67,7 @@ func runWithArgs(args []string, environ map[string]string, stdout io.Writer) err
 	cfg.APIKeys = splitCSV(apiKeys)
 	cfg.AllowedOrigins = splitCSV(allowedOrigins)
 	cfg.AuthorizationServers = splitCSV(authorizationServers)
+	cfg.GrokDisabled = !grokEnabled
 	if checkConfig {
 		if err := app.CheckConfig(cfg); err != nil {
 			return err

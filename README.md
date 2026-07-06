@@ -48,7 +48,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Current tool scopes include `tool:grok_search`, `tool:grok_extract`, `tool:grok_sources`, provider-wide `provider:grok`, and wildcard `*`.
 - API key configuration is strict: duplicate tokens, empty tokens, and empty or malformed scoped token lists fail startup.
 - HTTPS `MCP_GATEWAY_PUBLIC_BASE_URL` requires at least one API key at startup; this prevents accidental anonymous public exposure.
-- `GROK_API_URL`, `MCP_GATEWAY_PUBLIC_BASE_URL`, `MCP_GATEWAY_ALLOWED_ORIGINS`, and `MCP_GATEWAY_AUTHORIZATION_SERVERS` are validated at startup to catch malformed deployment config early.
+- `GROK_API_URL`, `MCP_GATEWAY_PUBLIC_BASE_URL`, `MCP_GATEWAY_ALLOWED_ORIGINS`, and `MCP_GATEWAY_AUTHORIZATION_SERVERS` are validated at startup to catch malformed deployment config early. `GROK_API_URL` is required only when `GROK_ENABLED=true`.
 - Run `mcp-gateway --check-config` in CI or before deployment. It validates effective configuration and exits without opening SQLite or listening on a port.
 - Set `MCP_GATEWAY_ALLOWED_ORIGINS` for public deployments. This is the browser-facing DNS rebinding/CORS boundary; non-browser agents without an `Origin` header continue to work.
 - Set `MCP_GATEWAY_AUTHORIZATION_SERVERS` when an OAuth issuer should be advertised to OAuth-aware MCP clients.
@@ -74,12 +74,15 @@ curl -sS http://127.0.0.1:8787/mcp \
 The built-in Grok tools call an OpenAI-compatible chat completions endpoint configured entirely through environment variables. Public releases should keep provider URLs and keys out of source control.
 
 ```bash
+GROK_ENABLED=true
 GROK_API_URL=https://api.example.com/v1/chat/completions
 GROK_API_KEY=replace-with-provider-key
 GROK_DEFAULT_MODEL=grok-4.3-fast
 ```
 
 Use your own reverse proxy or provider endpoint behind `GROK_API_URL`; the gateway does not hard-code any private upstream host.
+
+Set `GROK_ENABLED=false` to run the gateway without registering Grok tools. This mode does not require `GROK_API_URL` or `GROK_API_KEY`, which keeps the public gateway binary usable as a provider-neutral base.
 
 ## Design notes
 

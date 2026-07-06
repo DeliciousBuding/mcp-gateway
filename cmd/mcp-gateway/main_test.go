@@ -73,3 +73,22 @@ func TestCheckConfigAcceptsMaxBodyBytesFromEnvironment(t *testing.T) {
 		t.Fatalf("expected success output, got %q", stdout.String())
 	}
 }
+
+func TestCheckConfigAllowsGrokDisabledWithoutUpstreamURL(t *testing.T) {
+	var stdout bytes.Buffer
+
+	err := runWithArgs([]string{
+		"-check-config",
+		"-api-keys", "test-token",
+		"-public-base-url", "https://mcp.example/mcp",
+	}, map[string]string{
+		"GROK_ENABLED": "false",
+	}, &stdout)
+
+	if err != nil {
+		t.Fatalf("check config failed: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "configuration ok") {
+		t.Fatalf("expected success output, got %q", stdout.String())
+	}
+}

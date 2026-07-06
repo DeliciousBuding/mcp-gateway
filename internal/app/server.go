@@ -130,15 +130,17 @@ func NewServer(cfg Config) (*Server, error) {
 			s.apiKeys[token] = identity
 		}
 	}
-	grokClient := grok.NewClient(grok.Config{
-		APIURL:       cfg.GrokAPIURL,
-		APIKey:       cfg.GrokAPIKey,
-		DefaultModel: cfg.GrokDefaultModel,
-		Timeout:      cfg.UpstreamTimeout,
-	})
-	s.RegisterTool(newGrokSearchTool("grok_search", "Search the web through the configured Grok upstream and return an answer with sources.", grokClient, st, cfg.CacheTTL, false, false))
-	s.RegisterTool(newGrokSearchTool("grok_extract", "Extract structured JSON from web context through the configured Grok upstream.", grokClient, st, cfg.CacheTTL, true, false))
-	s.RegisterTool(newGrokSearchTool("grok_sources", "Return only sources discovered by the configured Grok upstream.", grokClient, st, cfg.CacheTTL, false, true))
+	if !cfg.GrokDisabled {
+		grokClient := grok.NewClient(grok.Config{
+			APIURL:       cfg.GrokAPIURL,
+			APIKey:       cfg.GrokAPIKey,
+			DefaultModel: cfg.GrokDefaultModel,
+			Timeout:      cfg.UpstreamTimeout,
+		})
+		s.RegisterTool(newGrokSearchTool("grok_search", "Search the web through the configured Grok upstream and return an answer with sources.", grokClient, st, cfg.CacheTTL, false, false))
+		s.RegisterTool(newGrokSearchTool("grok_extract", "Extract structured JSON from web context through the configured Grok upstream.", grokClient, st, cfg.CacheTTL, true, false))
+		s.RegisterTool(newGrokSearchTool("grok_sources", "Return only sources discovered by the configured Grok upstream.", grokClient, st, cfg.CacheTTL, false, true))
+	}
 	if _, err := s.prune(context.Background()); err != nil {
 		_ = st.Close()
 		return nil, err
