@@ -368,7 +368,7 @@ func (s *Server) withSecurity(next http.HandlerFunc) http.HandlerFunc {
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Allow", "POST")
 			w.Header().Set("Access-Control-Allow-Methods", "POST")
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, Mcp-Session-Id")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, MCP-Protocol-Version, X-Request-Id, Mcp-Session-Id")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1001,15 +1002,37 @@ func TestMCPDeleteReturnsMethodNotAllowedWhenSessionsDisabled(t *testing.T) {
 func TestOptionsDoesNotRequireAuth(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, nil)
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		PublicBaseURL:    "https://mcp.example.com/mcp",
+		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:       "http://127.0.0.1:1",
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"test-token"},
+		UpstreamTimeout:  time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  60,
+	})
 	req := httptest.NewRequest(http.MethodOptions, "/mcp", nil)
-	req.Header.Set("Origin", "http://example.invalid")
+	req.Header.Set("Origin", "https://mcp.example.com")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "authorization,content-type,accept,mcp-protocol-version,x-request-id")
 	rec := httptest.NewRecorder()
 
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://mcp.example.com" {
+		t.Fatalf("Access-Control-Allow-Origin = %q", got)
+	}
+	allowHeaders := strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers"))
+	for _, want := range []string{"authorization", "content-type", "accept", "mcp-protocol-version", "x-request-id"} {
+		if !strings.Contains(allowHeaders, want) {
+			t.Fatalf("Access-Control-Allow-Headers missing %q in %q", want, allowHeaders)
+		}
 	}
 }
 
