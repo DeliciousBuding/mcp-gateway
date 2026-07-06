@@ -573,6 +573,10 @@ func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, req rpcR
 	status := "ok"
 	errText := ""
 	sourceCnt := 0
+	remoteAddr := ""
+	if s.cfg.AuditRemoteAddr {
+		remoteAddr = r.RemoteAddr
+	}
 	requestID, _ := r.Context().Value(requestIDKey{}).(string)
 	defer func() {
 		_ = s.store.RecordToolCall(r.Context(), store.ToolCall{
@@ -583,7 +587,7 @@ func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, req rpcR
 			LatencyMS:  time.Since(start).Milliseconds(),
 			SourceCnt:  sourceCnt,
 			ErrorText:  errText,
-			RemoteAddr: r.RemoteAddr,
+			RemoteAddr: remoteAddr,
 		})
 	}()
 

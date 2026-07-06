@@ -1280,11 +1280,66 @@ func TestGrokSearchToolCallsUpstreamAndStoresAudit(t *testing.T) {
 	}
 	defer db.Close()
 	var requestID string
-	if err := db.QueryRowContext(context.Background(), `select request_id from tool_calls where tool_name='grok_search' and status='ok'`).Scan(&requestID); err != nil {
+	var remoteAddr string
+	if err := db.QueryRowContext(context.Background(), `select request_id, remote_addr from tool_calls where tool_name='grok_search' and status='ok'`).Scan(&requestID, &remoteAddr); err != nil {
 		t.Fatal(err)
 	}
 	if requestID != "req-tool-call-123" {
 		t.Fatalf("request_id = %q, want req-tool-call-123", requestID)
+	}
+	if remoteAddr != "" {
+		t.Fatalf("remote_addr = %q, want empty by default", remoteAddr)
+	}
+}
+
+func TestAuditRemoteAddrRequiresOptIn(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{
+				map[string]any{
+					"message": map[string]any{"content": "answer"},
+				},
+			},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+
+	dbPath := filepath.Join(t.TempDir(), "audit-remote.db")
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		PublicBaseURL:    "http://example.invalid",
+		DatabaseURL:      dbPath,
+		GrokAPIURL:       upstream.URL,
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"test-token"},
+		AuditRemoteAddr:  true,
+		UpstreamTimeout:  2 * time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  60,
+	})
+
+	req := newMCPRequest(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"grok_search","arguments":{"query":"remote addr opt in test","use_cache":false}}}`)
+	req.RemoteAddr = "203.0.113.10:4567"
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var remoteAddr string
+	if err := db.QueryRowContext(context.Background(), `select remote_addr from tool_calls where tool_name='grok_search' and status='ok'`).Scan(&remoteAddr); err != nil {
+		t.Fatal(err)
+	}
+	if remoteAddr != "203.0.113.10:4567" {
+		t.Fatalf("remote_addr = %q, want opt-in remote addr", remoteAddr)
 	}
 }
 

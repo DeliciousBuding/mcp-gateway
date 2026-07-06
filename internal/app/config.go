@@ -27,6 +27,7 @@ type Config struct {
 	MaxBodyBytes         int64
 	CacheTTL             time.Duration
 	AuditRetention       time.Duration
+	AuditRemoteAddr      bool
 	CleanupInterval      time.Duration
 	Logger               *slog.Logger
 }
@@ -50,6 +51,7 @@ type RedactedConfig struct {
 	MaxBodyBytes             int64    `json:"max_body_bytes"`
 	CacheTTL                 string   `json:"cache_ttl"`
 	AuditRetention           string   `json:"audit_retention"`
+	AuditRemoteAddr          bool     `json:"audit_remote_addr"`
 	CleanupInterval          string   `json:"cleanup_interval"`
 	BrowserOriginProtection  bool     `json:"browser_origin_protection"`
 }
@@ -157,6 +159,7 @@ func (c Config) redacted() RedactedConfig {
 		MaxBodyBytes:             c.MaxBodyBytes,
 		CacheTTL:                 c.CacheTTL.String(),
 		AuditRetention:           c.AuditRetention.String(),
+		AuditRemoteAddr:          c.AuditRemoteAddr,
 		CleanupInterval:          c.CleanupInterval.String(),
 		BrowserOriginProtection:  true,
 	}

@@ -153,8 +153,35 @@ func TestPrintConfigRedactsSecretsAndDoesNotOpenDatabase(t *testing.T) {
 	if cfg["grok_api_url_configured"] != true || cfg["grok_api_key_configured"] != true {
 		t.Fatalf("grok configured flags missing in %s", raw)
 	}
+	if cfg["audit_remote_addr"] != false {
+		t.Fatalf("audit_remote_addr = %v, want false in %s", cfg["audit_remote_addr"], raw)
+	}
 	if _, err := os.Stat(dbPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("print-config created database file %s", dbPath)
+	}
+}
+
+func TestPrintConfigShowsAuditRemoteAddrOptIn(t *testing.T) {
+	var stdout bytes.Buffer
+
+	err := runWithArgs([]string{
+		"-print-config",
+		"-grok-enabled=false",
+		"-api-keys", "test-token",
+		"-public-base-url", "https://mcp.example.com/mcp",
+	}, map[string]string{
+		"MCP_GATEWAY_AUDIT_REMOTE_ADDR": "true",
+	}, &stdout)
+
+	if err != nil {
+		t.Fatalf("print config failed: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &cfg); err != nil {
+		t.Fatalf("print-config did not output JSON: %v\n%s", err, stdout.String())
+	}
+	if cfg["audit_remote_addr"] != true {
+		t.Fatalf("audit_remote_addr = %v, want true in %s", cfg["audit_remote_addr"], stdout.String())
 	}
 }
 

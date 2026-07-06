@@ -65,6 +65,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - SQLite runs with WAL, `synchronous=NORMAL`, and one writer connection for predictable low-memory operation.
 - Short-lived SQLite response cache is enabled by default; tune `MCP_GATEWAY_CACHE_TTL` or set `use_cache=false` per tool call. Cache keys are SHA-256 digests, so raw prompts and search briefs are not stored in cache key columns.
 - Background SQLite cleanup is controlled by `MCP_GATEWAY_CLEANUP_INTERVAL`; `MCP_GATEWAY_AUDIT_RETENTION` limits audit growth while expired cache entries are always pruned.
+- Audit rows do not persist client remote addresses by default; set `MCP_GATEWAY_AUDIT_REMOTE_ADDR=true` only when that metadata is operationally required.
 - Limit upstream pressure with `MCP_GATEWAY_MAX_CONCURRENCY` and `MCP_GATEWAY_RATE_LIMIT_PER_MIN`.
 - Limit MCP JSON request size with `MCP_GATEWAY_MAX_BODY_BYTES` (default `1048576`). Oversized requests return HTTP `413` before JSON-RPC dispatch.
 - Put nginx/Cloudflare rate limits in front of the app for public exposure.
@@ -74,7 +75,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - `mcp_gateway_build_info` includes version, commit, and build date labels for runtime identification.
 - Send `X-Request-Id` from upstream proxies or clients when possible. The gateway echoes it back; otherwise it generates a 128-bit hex request id.
 - Access logs are structured JSON and include request id, method, route, status, duration, and the hashed agent id when authenticated. They intentionally do not log bearer tokens, request bodies, tool arguments, or upstream prompts.
-- SQLite audit rows in `tool_calls` include the same request id, so operators can join HTTP logs to tool execution records without storing prompts or tokens.
+- SQLite audit rows in `tool_calls` include the same request id, so operators can join HTTP logs to tool execution records without storing prompts, tokens, or client addresses by default.
 - HTTP panic recovery turns unexpected provider/tool panics into a stable `500` JSON response, records the request id, and avoids logging request bodies or bearer tokens.
 
 ## Provider configuration

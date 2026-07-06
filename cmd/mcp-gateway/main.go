@@ -57,6 +57,7 @@ func runWithArgs(args []string, environ map[string]string, stdout io.Writer) err
 	flags.DurationVar(&cfg.UpstreamTimeout, "upstream-timeout", durationEnv(getenv, "MCP_GATEWAY_UPSTREAM_TIMEOUT", 60*time.Second), "upstream request timeout")
 	flags.DurationVar(&cfg.CacheTTL, "cache-ttl", durationEnv(getenv, "MCP_GATEWAY_CACHE_TTL", 10*time.Minute), "SQLite response cache TTL; set 0 to disable")
 	flags.DurationVar(&cfg.AuditRetention, "audit-retention", durationEnv(getenv, "MCP_GATEWAY_AUDIT_RETENTION", 30*24*time.Hour), "SQLite audit retention; set 0 to keep audit rows")
+	flags.BoolVar(&cfg.AuditRemoteAddr, "audit-remote-addr", boolEnv(getenv, "MCP_GATEWAY_AUDIT_REMOTE_ADDR", false), "persist remote address in audit rows")
 	flags.DurationVar(&cfg.CleanupInterval, "cleanup-interval", durationEnv(getenv, "MCP_GATEWAY_CLEANUP_INTERVAL", time.Hour), "SQLite cleanup interval; set 0 to disable background cleanup")
 	flags.IntVar(&cfg.MaxConcurrency, "max-concurrency", intEnv(getenv, "MCP_GATEWAY_MAX_CONCURRENCY", 8), "max concurrent upstream tool calls")
 	flags.IntVar(&cfg.RateLimitPerMin, "rate-limit-per-min", intEnv(getenv, "MCP_GATEWAY_RATE_LIMIT_PER_MIN", 60), "per-token request limit per minute")
