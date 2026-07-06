@@ -117,7 +117,7 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchResponse,
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
-		return SearchResponse{}, err
+		return SearchResponse{}, errors.New("grok upstream request failed")
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))

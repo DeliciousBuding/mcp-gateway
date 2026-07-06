@@ -74,3 +74,27 @@ func TestClientRedactsNon2xxUpstreamBody(t *testing.T) {
 		t.Fatalf("error leaked upstream body: %q", text)
 	}
 }
+
+func TestClientRedactsTransportErrorURL(t *testing.T) {
+	t.Parallel()
+
+	client := grok.NewClient(grok.Config{
+		APIURL:       "http://127.0.0.1:1/SECRET_PROVIDER_PATH",
+		DefaultModel: "grok-test",
+		Timeout:      500 * time.Millisecond,
+	})
+	_, err := client.Search(context.Background(), grok.SearchRequest{
+		Query:     "transport failure test",
+		MaxTokens: 128,
+	})
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+	text := err.Error()
+	if !strings.Contains(text, "grok upstream request failed") {
+		t.Fatalf("error = %q, want stable transport error", text)
+	}
+	if strings.Contains(text, "SECRET_PROVIDER_PATH") || strings.Contains(text, "127.0.0.1") {
+		t.Fatalf("error leaked upstream URL details: %q", text)
+	}
+}
