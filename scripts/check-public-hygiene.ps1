@@ -20,17 +20,17 @@ $trackedFiles = & git -C $Root ls-files |
   ForEach-Object { $_.Trim() } |
   Where-Object { $_ -and $_ -ne "scripts/check-public-hygiene.ps1" }
 
-$files = foreach ($path in $trackedFiles) {
-  Get-Item -LiteralPath (Join-Path $Root $path)
-}
-
 $violations = @()
-foreach ($file in $files) {
-  $text = Get-Content -Raw -LiteralPath $file.FullName -ErrorAction SilentlyContinue
+foreach ($path in $trackedFiles) {
+  $fullPath = Join-Path $Root $path
+  if (Test-Path -LiteralPath $fullPath) {
+    $text = Get-Content -Raw -LiteralPath $fullPath -ErrorAction SilentlyContinue
+  } else {
+    $text = (& git -C $Root show "HEAD:$path") -join "`n"
+  }
   foreach ($pattern in $patterns) {
     if ($text -match $pattern) {
-      $relative = Resolve-Path -LiteralPath $file.FullName -Relative
-      $violations += "${relative}: matched /$pattern/"
+      $violations += "${path}: matched /$pattern/"
     }
   }
 }
