@@ -52,7 +52,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - `GROK_API_URL`, `MCP_GATEWAY_PUBLIC_BASE_URL`, `MCP_GATEWAY_ALLOWED_ORIGINS`, and `MCP_GATEWAY_AUTHORIZATION_SERVERS` are validated at startup to catch malformed deployment config early. `GROK_API_URL` is required only when `GROK_ENABLED=true`.
 - Run `mcp-gateway --check-config` in CI or before deployment. It validates effective configuration and exits without opening SQLite or listening on a port.
 - Run `mcp-gateway --version` to print build metadata. Release builds can inject `Version`, `Commit`, and `Date` with Go ldflags or Docker build args.
-- Set `MCP_GATEWAY_ALLOWED_ORIGINS` for public deployments. This is the browser-facing DNS rebinding/CORS boundary; non-browser agents without an `Origin` header continue to work.
+- Set `MCP_GATEWAY_ALLOWED_ORIGINS` for browser-based clients. This is the DNS rebinding/CORS boundary: requests that carry an `Origin` header are rejected unless the origin is explicitly allowed or derived from `MCP_GATEWAY_PUBLIC_BASE_URL`; non-browser agents without an `Origin` header continue to work.
 - Set `MCP_GATEWAY_AUTHORIZATION_SERVERS` when an OAuth issuer should be advertised to OAuth-aware MCP clients.
 - Keep `MCP_GATEWAY_PROTECT_METRICS=true` on public hosts unless a private network or reverse proxy already protects `/metrics`.
 - Unauthorized MCP responses include `WWW-Authenticate: Bearer resource_metadata="..."`, pointing clients at `/.well-known/oauth-protected-resource`.

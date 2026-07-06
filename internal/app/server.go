@@ -388,7 +388,7 @@ func (s *Server) allowOrigin(w http.ResponseWriter, r *http.Request) bool {
 	}
 	w.Header().Add("Vary", "Origin")
 	if len(s.cfg.AllowedOrigins) == 0 {
-		return true
+		return false
 	}
 	for _, allowed := range s.cfg.AllowedOrigins {
 		allowed = strings.TrimSpace(allowed)

@@ -958,6 +958,52 @@ func TestOriginAllowlistRejectsUntrustedOrigin(t *testing.T) {
 	}
 }
 
+func TestOriginRequiresExplicitAllowlistWhenPresent(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:       "http://127.0.0.1:1",
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"test-token"},
+		UpstreamTimeout:  time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  60,
+	})
+	req := newMCPRequest(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	req.Header.Set("Origin", "https://browser.example")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestsWithoutOriginDoNotRequireAllowlist(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:       "http://127.0.0.1:1",
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"test-token"},
+		UpstreamTimeout:  time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  60,
+	})
+	rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPublicBaseURLBecomesDefaultAllowedOrigin(t *testing.T) {
 	t.Parallel()
 
@@ -983,6 +1029,19 @@ func TestPublicBaseURLBecomesDefaultAllowedOrigin(t *testing.T) {
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Origin", "https://mcp.example.com")
+	rec = httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
 }
