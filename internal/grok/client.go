@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"strings"
@@ -124,7 +125,11 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchResponse,
 		return SearchResponse{}, errors.New("grok upstream request failed")
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, c.cfg.MaxResponseBytes+1))
+	readLimit := c.cfg.MaxResponseBytes + 1
+	if c.cfg.MaxResponseBytes == math.MaxInt64 {
+		readLimit = math.MaxInt64
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, readLimit))
 	if err != nil {
 		return SearchResponse{}, err
 	}

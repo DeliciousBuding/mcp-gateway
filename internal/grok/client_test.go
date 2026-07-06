@@ -3,6 +3,7 @@ package grok_test
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -127,5 +128,32 @@ func TestClientRejectsOversizedUpstreamResponse(t *testing.T) {
 	}
 	if strings.Contains(text, "SECRET_OVERSIZED_RESPONSE_BODY_SHOULD_NOT_LEAK") {
 		t.Fatalf("error leaked response body: %q", text)
+	}
+}
+
+func TestClientHandlesMaxInt64ResponseLimit(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	client := grok.NewClient(grok.Config{
+		APIURL:           upstream.URL,
+		DefaultModel:     "grok-test",
+		Timeout:          time.Second,
+		MaxResponseBytes: math.MaxInt64,
+	})
+	res, err := client.Search(context.Background(), grok.SearchRequest{
+		Query:     "max int64 response limit test",
+		MaxTokens: 128,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Content != "ok" {
+		t.Fatalf("content = %q", res.Content)
 	}
 }
