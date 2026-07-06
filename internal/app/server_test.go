@@ -243,6 +243,8 @@ func TestMetricsExposesOperationalCounters(t *testing.T) {
 		`mcp_gateway_tools_registered 3`,
 		`mcp_gateway_upstream_inflight 0`,
 		`mcp_gateway_http_requests_total{route="/mcp",method="POST",status="200"} 1`,
+		`mcp_gateway_http_request_duration_seconds_bucket{route="/mcp",method="POST",status="200",le="+Inf"} 1`,
+		`mcp_gateway_http_request_duration_seconds_count{route="/mcp",method="POST",status="200"} 1`,
 		`mcp_gateway_rpc_requests_total{method="tools/list",status="ok"} 1`,
 	} {
 		if !bytes.Contains(rec.Body.Bytes(), []byte(want)) {
@@ -322,6 +324,8 @@ func TestMetricsCountsToolCallsAndCacheResults(t *testing.T) {
 	srv.ServeHTTP(rec, req)
 	for _, want := range []string{
 		`mcp_gateway_tool_calls_total{tool="grok_search",status="ok"} 2`,
+		`mcp_gateway_tool_call_duration_seconds_bucket{tool="grok_search",status="ok",le="+Inf"} 2`,
+		`mcp_gateway_tool_call_duration_seconds_count{tool="grok_search",status="ok"} 2`,
 		`mcp_gateway_cache_requests_total{tool="grok_search",result="miss"} 1`,
 		`mcp_gateway_cache_requests_total{tool="grok_search",result="hit"} 1`,
 	} {

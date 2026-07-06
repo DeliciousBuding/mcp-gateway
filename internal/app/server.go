@@ -29,6 +29,8 @@ const protocolVersion = "2025-06-18"
 
 var errBodyTooLarge = errors.New("request body too large")
 
+var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
+
 type Server struct {
 	cfg           Config
 	mux           *http.ServeMux
@@ -49,12 +51,20 @@ type gatewayMetrics struct {
 	rpcRequests   map[metricKey]*atomic.Int64
 	toolCalls     map[metricKey]*atomic.Int64
 	cacheRequests map[metricKey]*atomic.Int64
+	httpDuration  map[metricKey]*durationHistogram
+	toolDuration  map[metricKey]*durationHistogram
 }
 
 type metricKey struct {
 	A string
 	B string
 	C string
+}
+
+type durationHistogram struct {
+	buckets   []*atomic.Int64
+	sumMicros atomic.Int64
+	count     atomic.Int64
 }
 
 type agentIdentity struct {
@@ -119,6 +129,8 @@ func NewServer(cfg Config) (*Server, error) {
 			rpcRequests:   make(map[metricKey]*atomic.Int64),
 			toolCalls:     make(map[metricKey]*atomic.Int64),
 			cacheRequests: make(map[metricKey]*atomic.Int64),
+			httpDuration:  make(map[metricKey]*durationHistogram),
+			toolDuration:  make(map[metricKey]*durationHistogram),
 		},
 	}
 	if s.log == nil {
@@ -288,8 +300,10 @@ func (s *Server) routes() {
 func (s *Server) trackHTTP(route string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ww := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		start := time.Now()
 		next(ww, r)
 		s.metrics.incHTTP(route, r.Method, ww.status)
+		s.metrics.observeHTTP(route, r.Method, ww.status, time.Since(start))
 	}
 }
 
@@ -578,6 +592,7 @@ func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, req rpcR
 		s.metrics.incTool(params.Name, "error")
 		status = "error"
 		errText = err.Error()
+		s.metrics.observeTool(params.Name, status, time.Since(start))
 		writeRPC(w, req.ID, map[string]any{
 			"content": []map[string]any{{"type": "text", "text": err.Error()}},
 			"isError": true,
@@ -586,6 +601,7 @@ func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, req rpcR
 	}
 	s.metrics.incRPC(req.Method, "ok")
 	s.metrics.incTool(params.Name, "ok")
+	s.metrics.observeTool(params.Name, status, time.Since(start))
 	if result.CacheResult != "" {
 		s.metrics.incCache(params.Name, result.CacheResult)
 	}
@@ -602,6 +618,11 @@ func (s *Server) writeMetrics(w io.Writer) {
 	for _, sample := range s.metrics.snapshotHTTP() {
 		_, _ = fmt.Fprintf(w, "mcp_gateway_http_requests_total{route=%q,method=%q,status=%q} %d\n", sample.Key.A, sample.Key.B, sample.Key.C, sample.Value)
 	}
+	_, _ = fmt.Fprintf(w, "# HELP mcp_gateway_http_request_duration_seconds HTTP request duration by route, method, and status.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE mcp_gateway_http_request_duration_seconds histogram\n")
+	for _, sample := range s.metrics.snapshotHTTPDuration() {
+		writeDurationHistogram(w, "mcp_gateway_http_request_duration_seconds", []string{"route", "method", "status"}, []string{sample.Key.A, sample.Key.B, sample.Key.C}, sample)
+	}
 	_, _ = fmt.Fprintf(w, "# HELP mcp_gateway_rpc_requests_total Total MCP JSON-RPC requests by method and status.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE mcp_gateway_rpc_requests_total counter\n")
 	for _, sample := range s.metrics.snapshotRPC() {
@@ -611,6 +632,11 @@ func (s *Server) writeMetrics(w io.Writer) {
 	_, _ = fmt.Fprintf(w, "# TYPE mcp_gateway_tool_calls_total counter\n")
 	for _, sample := range s.metrics.snapshotTool() {
 		_, _ = fmt.Fprintf(w, "mcp_gateway_tool_calls_total{tool=%q,status=%q} %d\n", sample.Key.A, sample.Key.B, sample.Value)
+	}
+	_, _ = fmt.Fprintf(w, "# HELP mcp_gateway_tool_call_duration_seconds MCP tool call duration by tool and status.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE mcp_gateway_tool_call_duration_seconds histogram\n")
+	for _, sample := range s.metrics.snapshotToolDuration() {
+		writeDurationHistogram(w, "mcp_gateway_tool_call_duration_seconds", []string{"tool", "status"}, []string{sample.Key.A, sample.Key.B}, sample)
 	}
 	_, _ = fmt.Fprintf(w, "# HELP mcp_gateway_cache_requests_total Total tool cache requests by tool and result.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE mcp_gateway_cache_requests_total counter\n")
@@ -622,6 +648,13 @@ func (s *Server) writeMetrics(w io.Writer) {
 type metricSample struct {
 	Key   metricKey
 	Value int64
+}
+
+type histogramSample struct {
+	Key       metricKey
+	Buckets   []int64
+	SumMicros int64
+	Count     int64
 }
 
 func (m *gatewayMetrics) incHTTP(route, method string, status int) {
@@ -640,6 +673,14 @@ func (m *gatewayMetrics) incCache(tool, result string) {
 	m.inc(m.cacheRequests, metricKey{A: tool, B: result})
 }
 
+func (m *gatewayMetrics) observeHTTP(route, method string, status int, d time.Duration) {
+	m.observe(m.httpDuration, metricKey{A: route, B: method, C: strconv.Itoa(status)}, d)
+}
+
+func (m *gatewayMetrics) observeTool(tool, status string, d time.Duration) {
+	m.observe(m.toolDuration, metricKey{A: tool, B: status}, d)
+}
+
 func (m *gatewayMetrics) inc(samples map[metricKey]*atomic.Int64, key metricKey) {
 	m.mu.Lock()
 	counter := samples[key]
@@ -649,6 +690,33 @@ func (m *gatewayMetrics) inc(samples map[metricKey]*atomic.Int64, key metricKey)
 	}
 	m.mu.Unlock()
 	counter.Add(1)
+}
+
+func (m *gatewayMetrics) observe(samples map[metricKey]*durationHistogram, key metricKey, d time.Duration) {
+	seconds := d.Seconds()
+	m.mu.Lock()
+	h := samples[key]
+	if h == nil {
+		h = newDurationHistogram()
+		samples[key] = h
+	}
+	m.mu.Unlock()
+	for i, bucket := range durationBuckets {
+		if seconds <= bucket {
+			h.buckets[i].Add(1)
+		}
+	}
+	h.buckets[len(durationBuckets)].Add(1)
+	h.sumMicros.Add(d.Microseconds())
+	h.count.Add(1)
+}
+
+func newDurationHistogram() *durationHistogram {
+	h := &durationHistogram{buckets: make([]*atomic.Int64, len(durationBuckets)+1)}
+	for i := range h.buckets {
+		h.buckets[i] = &atomic.Int64{}
+	}
+	return h
 }
 
 func (m *gatewayMetrics) snapshotHTTP() []metricSample {
@@ -667,6 +735,14 @@ func (m *gatewayMetrics) snapshotCache() []metricSample {
 	return m.snapshot(m.cacheRequests)
 }
 
+func (m *gatewayMetrics) snapshotHTTPDuration() []histogramSample {
+	return m.snapshotHistogram(m.httpDuration)
+}
+
+func (m *gatewayMetrics) snapshotToolDuration() []histogramSample {
+	return m.snapshotHistogram(m.toolDuration)
+}
+
 func (m *gatewayMetrics) snapshot(samples map[metricKey]*atomic.Int64) []metricSample {
 	m.mu.Lock()
 	out := make([]metricSample, 0, len(samples))
@@ -675,6 +751,42 @@ func (m *gatewayMetrics) snapshot(samples map[metricKey]*atomic.Int64) []metricS
 	}
 	m.mu.Unlock()
 	return out
+}
+
+func (m *gatewayMetrics) snapshotHistogram(samples map[metricKey]*durationHistogram) []histogramSample {
+	m.mu.Lock()
+	out := make([]histogramSample, 0, len(samples))
+	for key, histogram := range samples {
+		buckets := make([]int64, len(histogram.buckets))
+		for i, bucket := range histogram.buckets {
+			buckets[i] = bucket.Load()
+		}
+		out = append(out, histogramSample{
+			Key:       key,
+			Buckets:   buckets,
+			SumMicros: histogram.sumMicros.Load(),
+			Count:     histogram.count.Load(),
+		})
+	}
+	m.mu.Unlock()
+	return out
+}
+
+func writeDurationHistogram(w io.Writer, name string, labelNames []string, labelValues []string, sample histogramSample) {
+	for i, upperBound := range durationBuckets {
+		_, _ = fmt.Fprintf(w, "%s_bucket{%sle=%q} %d\n", name, histogramLabels(labelNames, labelValues), strconv.FormatFloat(upperBound, 'g', -1, 64), sample.Buckets[i])
+	}
+	_, _ = fmt.Fprintf(w, "%s_bucket{%sle=\"+Inf\"} %d\n", name, histogramLabels(labelNames, labelValues), sample.Buckets[len(durationBuckets)])
+	_, _ = fmt.Fprintf(w, "%s_sum{%s} %.6f\n", name, strings.TrimSuffix(histogramLabels(labelNames, labelValues), ","), float64(sample.SumMicros)/1_000_000)
+	_, _ = fmt.Fprintf(w, "%s_count{%s} %d\n", name, strings.TrimSuffix(histogramLabels(labelNames, labelValues), ","), sample.Count)
+}
+
+func histogramLabels(names []string, values []string) string {
+	var b strings.Builder
+	for i := range names {
+		_, _ = fmt.Fprintf(&b, "%s=%q,", names[i], values[i])
+	}
+	return b.String()
 }
 
 type rpcRequest struct {
