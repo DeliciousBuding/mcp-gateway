@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,5 +43,34 @@ func TestClientParsesOpenAICompatibleSearchSources(t *testing.T) {
 	}
 	if len(res.Sources) != 1 || res.Sources[0].URL != "https://example.com" {
 		t.Fatalf("sources = %#v", res.Sources)
+	}
+}
+
+func TestClientRedactsNon2xxUpstreamBody(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `provider echoed SECRET_PROMPT_BODY and internal details`, http.StatusBadGateway)
+	}))
+	t.Cleanup(upstream.Close)
+
+	client := grok.NewClient(grok.Config{
+		APIURL:       upstream.URL,
+		DefaultModel: "grok-test",
+		Timeout:      time.Second,
+	})
+	_, err := client.Search(context.Background(), grok.SearchRequest{
+		Query:     "SECRET_PROMPT_BODY",
+		MaxTokens: 128,
+	})
+	if err == nil {
+		t.Fatal("expected upstream error")
+	}
+	text := err.Error()
+	if !strings.Contains(text, "502") {
+		t.Fatalf("error = %q, want status code", text)
+	}
+	if strings.Contains(text, "SECRET_PROMPT_BODY") || strings.Contains(text, "internal details") {
+		t.Fatalf("error leaked upstream body: %q", text)
 	}
 }

@@ -79,6 +79,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Send `X-Request-Id` from upstream proxies or clients when possible. The gateway echoes it back; otherwise it generates a 128-bit hex request id.
 - Access logs are structured JSON and include request id, method, route, status, duration, and the hashed agent id when authenticated. They intentionally do not log bearer tokens, request bodies, tool arguments, or upstream prompts.
 - SQLite audit rows in `tool_calls` include the same request id, so operators can join HTTP logs to tool execution records without storing prompts, tokens, or client addresses by default.
+- Non-2xx provider responses are reported by status and body size only; upstream error bodies are not returned or stored.
 - HTTP panic recovery turns unexpected provider/tool panics into a stable `500` JSON response, records the request id, and avoids logging request bodies or bearer tokens.
 
 ## Provider configuration

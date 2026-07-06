@@ -125,7 +125,7 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchResponse,
 		return SearchResponse{}, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return SearchResponse{}, fmt.Errorf("grok upstream status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return SearchResponse{}, fmt.Errorf("grok upstream status %d (body_bytes=%d)", resp.StatusCode, len(raw))
 	}
 
 	var decoded struct {
