@@ -156,6 +156,9 @@ func TestPrintConfigRedactsSecretsAndDoesNotOpenDatabase(t *testing.T) {
 	if cfg["grok_max_query_bytes"] != float64(32768) {
 		t.Fatalf("grok_max_query_bytes = %v, want 32768 in %s", cfg["grok_max_query_bytes"], raw)
 	}
+	if cfg["grok_max_response_bytes"] != float64(4194304) {
+		t.Fatalf("grok_max_response_bytes = %v, want 4194304 in %s", cfg["grok_max_response_bytes"], raw)
+	}
 	if cfg["audit_remote_addr"] != false {
 		t.Fatalf("audit_remote_addr = %v, want false in %s", cfg["audit_remote_addr"], raw)
 	}

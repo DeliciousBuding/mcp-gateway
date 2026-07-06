@@ -66,6 +66,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - SQLite runs with WAL, `synchronous=NORMAL`, and one writer connection for predictable low-memory operation.
 - Short-lived SQLite response cache is enabled by default; tune `MCP_GATEWAY_CACHE_TTL` or set `use_cache=false` per tool call. Cache keys are SHA-256 digests, so raw prompts and search briefs are not stored in cache key columns.
 - Grok query text is capped by `GROK_MAX_QUERY_BYTES` (default `32768`) before upstream calls or cache writes.
+- Grok upstream response bodies are capped by `GROK_MAX_RESPONSE_BYTES` (default `4194304`) before JSON parsing or caching.
 - Grok tool calls validate `max_tokens` at runtime and reject values outside `1..8192` before contacting the upstream provider.
 - Background SQLite cleanup is controlled by `MCP_GATEWAY_CLEANUP_INTERVAL`; `MCP_GATEWAY_AUDIT_RETENTION` limits audit growth while expired cache entries are always pruned.
 - Audit rows do not persist client remote addresses by default; set `MCP_GATEWAY_AUDIT_REMOTE_ADDR=true` only when that metadata is operationally required.
@@ -92,6 +93,7 @@ GROK_API_URL=https://api.example.com/v1/chat/completions
 GROK_API_KEY=replace-with-provider-key
 GROK_DEFAULT_MODEL=grok-4.3-fast
 GROK_MAX_QUERY_BYTES=32768
+GROK_MAX_RESPONSE_BYTES=4194304
 ```
 
 Use your own reverse proxy or provider endpoint behind `GROK_API_URL`; the gateway does not hard-code any private upstream host.

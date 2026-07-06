@@ -16,10 +16,11 @@ import (
 const defaultSystemPrompt = "You are a web search assistant with access to real-time search. For every claim, cite sources inline as [N](url). Be accurate, concise, and factual. Use the user's language."
 
 type Config struct {
-	APIURL       string
-	APIKey       string
-	DefaultModel string
-	Timeout      time.Duration
+	APIURL           string
+	APIKey           string
+	DefaultModel     string
+	Timeout          time.Duration
+	MaxResponseBytes int64
 }
 
 type Client struct {
@@ -50,6 +51,9 @@ func NewClient(cfg Config) *Client {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 60 * time.Second
+	}
+	if cfg.MaxResponseBytes <= 0 {
+		cfg.MaxResponseBytes = 4 << 20
 	}
 	return &Client{
 		cfg: cfg,
@@ -120,9 +124,12 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchResponse,
 		return SearchResponse{}, errors.New("grok upstream request failed")
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, c.cfg.MaxResponseBytes+1))
 	if err != nil {
 		return SearchResponse{}, err
+	}
+	if int64(len(raw)) > c.cfg.MaxResponseBytes {
+		return SearchResponse{}, fmt.Errorf("grok upstream response too large (max_bytes=%d)", c.cfg.MaxResponseBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return SearchResponse{}, fmt.Errorf("grok upstream status %d (body_bytes=%d)", resp.StatusCode, len(raw))

@@ -98,3 +98,34 @@ func TestClientRedactsTransportErrorURL(t *testing.T) {
 		t.Fatalf("error leaked upstream URL details: %q", text)
 	}
 }
+
+func TestClientRejectsOversizedUpstreamResponse(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"SECRET_OVERSIZED_RESPONSE_BODY_SHOULD_NOT_LEAK"}}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	client := grok.NewClient(grok.Config{
+		APIURL:           upstream.URL,
+		DefaultModel:     "grok-test",
+		Timeout:          time.Second,
+		MaxResponseBytes: 32,
+	})
+	_, err := client.Search(context.Background(), grok.SearchRequest{
+		Query:     "oversized response test",
+		MaxTokens: 128,
+	})
+	if err == nil {
+		t.Fatal("expected oversized response error")
+	}
+	text := err.Error()
+	if !strings.Contains(text, "grok upstream response too large") {
+		t.Fatalf("error = %q, want oversized response error", text)
+	}
+	if strings.Contains(text, "SECRET_OVERSIZED_RESPONSE_BODY_SHOULD_NOT_LEAK") {
+		t.Fatalf("error leaked response body: %q", text)
+	}
+}

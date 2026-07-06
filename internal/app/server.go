@@ -146,10 +146,11 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 	if !cfg.GrokDisabled {
 		grokClient := grok.NewClient(grok.Config{
-			APIURL:       cfg.GrokAPIURL,
-			APIKey:       cfg.GrokAPIKey,
-			DefaultModel: cfg.GrokDefaultModel,
-			Timeout:      cfg.UpstreamTimeout,
+			APIURL:           cfg.GrokAPIURL,
+			APIKey:           cfg.GrokAPIKey,
+			DefaultModel:     cfg.GrokDefaultModel,
+			Timeout:          cfg.UpstreamTimeout,
+			MaxResponseBytes: cfg.GrokMaxResponseBytes,
 		})
 		s.RegisterTool(newGrokSearchTool("grok_search", "Search the web through the configured Grok upstream and return an answer with sources.", grokClient, st, cfg.CacheTTL, cfg.GrokMaxQueryBytes, false, false))
 		s.RegisterTool(newGrokSearchTool("grok_extract", "Extract structured JSON from web context through the configured Grok upstream.", grokClient, st, cfg.CacheTTL, cfg.GrokMaxQueryBytes, true, false))

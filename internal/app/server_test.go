@@ -454,6 +454,49 @@ func TestGrokToolRejectsQueryOverConfiguredLimitBeforeUpstream(t *testing.T) {
 	}
 }
 
+func TestGrokToolRejectsOversizedUpstreamResponse(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"SECRET_OVERSIZED_RESPONSE_BODY_SHOULD_NOT_LEAK"}}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	srv := newTestServer(t, &app.Config{
+		Addr:                 "127.0.0.1:0",
+		PublicBaseURL:        "http://example.invalid",
+		DatabaseURL:          filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:           upstream.URL,
+		GrokAPIKey:           "upstream-key",
+		GrokDefaultModel:     "grok-test",
+		GrokMaxResponseBytes: 32,
+		APIKeys:              []string{"test-token"},
+		CacheTTL:             time.Minute,
+		UpstreamTimeout:      time.Second,
+		MaxConcurrency:       4,
+		RateLimitPerMin:      60,
+	})
+
+	rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"grok_search","arguments":{"query":"oversized response test","use_cache":false}}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	decoded := decodeObject(t, rec.Body.Bytes())
+	result := decoded["result"].(map[string]any)
+	if result["isError"] != true {
+		t.Fatalf("result = %#v, want tool error", result)
+	}
+	content := result["content"].([]any)
+	text := content[0].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "grok upstream response too large") {
+		t.Fatalf("error text = %q, want oversized response error", text)
+	}
+	if strings.Contains(text, "SECRET_OVERSIZED_RESPONSE_BODY_SHOULD_NOT_LEAK") {
+		t.Fatalf("error leaked oversized response body: %q", text)
+	}
+}
+
 func TestMetricsCanRequireBearerToken(t *testing.T) {
 	t.Parallel()
 
