@@ -16,12 +16,12 @@ $patterns = @(
   "\bus[0-9]\b"
 )
 
-$trackedFiles = & git -C $Root ls-files |
+$candidateFiles = & git -C $Root ls-files --cached --others --exclude-standard |
   ForEach-Object { $_.Trim() } |
   Where-Object { $_ -and $_ -ne "scripts/check-public-hygiene.ps1" }
 
 $violations = @()
-foreach ($path in $trackedFiles) {
+foreach ($path in $candidateFiles) {
   $fullPath = Join-Path $Root $path
   if (Test-Path -LiteralPath $fullPath) {
     $text = Get-Content -Raw -LiteralPath $fullPath -ErrorAction SilentlyContinue

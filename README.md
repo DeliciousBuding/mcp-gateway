@@ -132,3 +132,7 @@ docker run --rm -p 8787:8787 \
   mcp-gateway:v0.1.0 \
   -database /data/mcp-gateway.db
 ```
+
+## Releases
+
+Pushing a `v*` tag runs the release workflow. It gates on public hygiene, tests, and `go vet`, then publishes cross-platform archives with `checksums.txt` and a multi-arch GHCR image tagged with the release tag.
