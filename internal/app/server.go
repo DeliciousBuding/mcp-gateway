@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"mime"
 	"net/http"
 	"net/url"
@@ -1096,7 +1097,14 @@ func (t *grokSearchTool) Call(ctx context.Context, args map[string]any) (ToolCal
 		return ToolCallResult{}, errors.New("query is required")
 	}
 	model, _ := args["model"].(string)
-	maxTokens := intFromAny(args["max_tokens"])
+	maxTokens := 0
+	if rawMaxTokens, ok := args["max_tokens"]; ok {
+		var err error
+		maxTokens, err = maxTokensFromAny(rawMaxTokens)
+		if err != nil {
+			return ToolCallResult{}, err
+		}
+	}
 	useCache := true
 	if v, ok := args["use_cache"].(bool); ok {
 		useCache = v
@@ -1152,16 +1160,34 @@ func (t *grokSearchTool) cacheKey(query, model string, maxTokens int) string {
 	return "grok:" + hex.EncodeToString(sum[:])
 }
 
-func intFromAny(v any) int {
+func maxTokensFromAny(v any) (int, error) {
+	const maxAllowedTokens = 8192
+	n, ok := intFromAny(v)
+	if !ok {
+		return 0, errors.New("max_tokens must be an integer between 1 and 8192")
+	}
+	if n < 1 || n > maxAllowedTokens {
+		return 0, errors.New("max_tokens must be between 1 and 8192")
+	}
+	return n, nil
+}
+
+func intFromAny(v any) (int, bool) {
 	switch n := v.(type) {
 	case float64:
-		return int(n)
+		if math.Trunc(n) != n {
+			return 0, false
+		}
+		return int(n), true
 	case int:
-		return n
+		return n, true
 	case json.Number:
-		i, _ := n.Int64()
-		return int(i)
+		i, err := n.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(i), true
 	default:
-		return 0
+		return 0, false
 	}
 }

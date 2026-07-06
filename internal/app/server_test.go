@@ -350,6 +350,60 @@ func TestMetricsCountsToolCallsAndCacheResults(t *testing.T) {
 	}
 }
 
+func TestGrokToolRejectsInvalidMaxTokensBeforeUpstream(t *testing.T) {
+	t.Parallel()
+
+	var upstreamCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{
+				map[string]any{
+					"message": map[string]any{"content": "should not be called"},
+				},
+			},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		PublicBaseURL:    "http://example.invalid",
+		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:       upstream.URL,
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"test-token"},
+		CacheTTL:         time.Minute,
+		UpstreamTimeout:  time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  60,
+	})
+
+	for _, body := range []string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"grok_search","arguments":{"query":"bounds test","max_tokens":100000}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"grok_search","arguments":{"query":"fractional test","max_tokens":1.5}}}`,
+	} {
+		rec := doMCP(t, srv, body)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+		}
+		decoded := decodeObject(t, rec.Body.Bytes())
+		result := decoded["result"].(map[string]any)
+		if result["isError"] != true {
+			t.Fatalf("result = %#v, want tool error", result)
+		}
+		content := result["content"].([]any)
+		text := content[0].(map[string]any)["text"].(string)
+		if !strings.Contains(text, "max_tokens") {
+			t.Fatalf("error text = %q, want max_tokens validation error", text)
+		}
+	}
+	if got := upstreamCalls.Load(); got != 0 {
+		t.Fatalf("upstream calls = %d, want 0", got)
+	}
+}
+
 func TestMetricsCanRequireBearerToken(t *testing.T) {
 	t.Parallel()
 

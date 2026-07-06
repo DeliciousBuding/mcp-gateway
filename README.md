@@ -65,6 +65,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - JSON-RPC notifications without an `id` return `202` with no response body.
 - SQLite runs with WAL, `synchronous=NORMAL`, and one writer connection for predictable low-memory operation.
 - Short-lived SQLite response cache is enabled by default; tune `MCP_GATEWAY_CACHE_TTL` or set `use_cache=false` per tool call. Cache keys are SHA-256 digests, so raw prompts and search briefs are not stored in cache key columns.
+- Grok tool calls validate `max_tokens` at runtime and reject values outside `1..8192` before contacting the upstream provider.
 - Background SQLite cleanup is controlled by `MCP_GATEWAY_CLEANUP_INTERVAL`; `MCP_GATEWAY_AUDIT_RETENTION` limits audit growth while expired cache entries are always pruned.
 - Audit rows do not persist client remote addresses by default; set `MCP_GATEWAY_AUDIT_REMOTE_ADDR=true` only when that metadata is operationally required.
 - Limit upstream pressure with `MCP_GATEWAY_MAX_CONCURRENCY` and `MCP_GATEWAY_RATE_LIMIT_PER_MIN`.
