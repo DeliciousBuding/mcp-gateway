@@ -1072,6 +1072,33 @@ func TestStreamableHTTPHeaderValidation(t *testing.T) {
 	})
 }
 
+func TestStatelessMCPDeleteRejectsSessionTermination(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	req := httptest.NewRequest(http.MethodDelete, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("MCP-Protocol-Version", "2025-06-18")
+	req.Header.Set("Mcp-Session-Id", "session-123")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Allow"); got != "POST" {
+		t.Fatalf("Allow = %q, want POST", got)
+	}
+	if got := rec.Header().Get("MCP-Protocol-Version"); got != "2025-06-18" {
+		t.Fatalf("MCP-Protocol-Version = %q", got)
+	}
+	body := decodeObject(t, rec.Body.Bytes())
+	if body["error"] != "session termination is not supported in stateless mode" {
+		t.Fatalf("error = %v body=%s", body["error"], rec.Body.String())
+	}
+}
+
 func TestMCPRejectsBodyLargerThanConfiguredLimit(t *testing.T) {
 	t.Parallel()
 

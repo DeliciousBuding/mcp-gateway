@@ -104,7 +104,7 @@ Set `GROK_ENABLED=false` to run the gateway without registering Grok tools. This
 
 - Single binary, no Redis required.
 - Provider-neutral tool registry.
-- Stateless Streamable HTTP mode by default: `POST /mcp` for JSON-RPC; streaming `GET /mcp` is deliberately disabled until session/SSE semantics are needed.
+- Stateless Streamable HTTP mode by default: `POST /mcp` for JSON-RPC; streaming `GET /mcp` is deliberately disabled until session/SSE semantics are needed, and `DELETE /mcp` returns a clear 405 because the gateway does not issue server-side sessions.
 - Tool definitions expose MCP metadata (`title`, `annotations`, `outputSchema`) so clients can reason about safety and display.
 - JSON structured logs through Go `slog`, including one access log event per HTTP request.
 - Graceful shutdown and conservative HTTP timeouts.

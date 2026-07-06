@@ -469,6 +469,11 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "streaming GET is disabled"})
 		return
 	}
+	if r.Method == http.MethodDelete {
+		w.Header().Set("Allow", "POST")
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "session termination is not supported in stateless mode"})
+		return
+	}
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
