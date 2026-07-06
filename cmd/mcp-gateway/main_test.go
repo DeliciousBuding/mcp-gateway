@@ -115,3 +115,21 @@ func TestCheckConfigAllowsGrokDisabledWithoutUpstreamURL(t *testing.T) {
 		t.Fatalf("expected success output, got %q", stdout.String())
 	}
 }
+
+func TestDockerfileDefaultsExposeReachableGateway(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "Dockerfile"))
+	if err != nil {
+		t.Fatalf("read Dockerfile: %v", err)
+	}
+	text := string(body)
+
+	if !strings.Contains(text, "ENV MCP_GATEWAY_ADDR=0.0.0.0:8787") {
+		t.Fatalf("Dockerfile must bind the container default listener to all interfaces")
+	}
+	if !strings.Contains(text, "EXPOSE 8787") {
+		t.Fatalf("Dockerfile must expose the same port used by MCP_GATEWAY_ADDR")
+	}
+	if strings.Contains(text, "GROK_API_URL=") || strings.Contains(text, "GROK_API_KEY=") {
+		t.Fatalf("Dockerfile must not bake provider URLs or keys into the public image")
+	}
+}

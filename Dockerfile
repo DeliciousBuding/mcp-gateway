@@ -12,6 +12,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/DeliciousBudi
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 COPY --from=build /out/mcp-gateway /app/mcp-gateway
+ENV MCP_GATEWAY_ADDR=0.0.0.0:8787
 VOLUME ["/data"]
 EXPOSE 8787
 ENTRYPOINT ["/app/mcp-gateway"]

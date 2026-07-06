@@ -119,3 +119,14 @@ docker build \
   --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
   -t mcp-gateway:v0.1.0 .
 ```
+
+Run the container with a writable data volume for SQLite:
+
+```bash
+docker run --rm -p 8787:8787 \
+  -e MCP_GATEWAY_API_KEYS=replace-with-long-random-token \
+  -e GROK_ENABLED=false \
+  -v mcp-gateway-data:/data \
+  mcp-gateway:v0.1.0 \
+  -database /data/mcp-gateway.db
+```
