@@ -1088,6 +1088,32 @@ func TestRejectsInvalidJSONRPCEnvelope(t *testing.T) {
 	}
 }
 
+func TestToolsCallRejectsMalformedParams(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	for _, bodyText := range []string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":null}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"   ","arguments":{}}}`,
+	} {
+		t.Run(bodyText, func(t *testing.T) {
+			rec := doMCP(t, srv, bodyText)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			body := decodeObject(t, rec.Body.Bytes())
+			errObj, ok := body["error"].(map[string]any)
+			if !ok {
+				t.Fatalf("missing error in %s", rec.Body.String())
+			}
+			if errObj["code"] != float64(-32602) || errObj["message"] != "invalid params" {
+				t.Fatalf("error = %#v, want invalid params in %s", errObj, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestNotificationReturnsAcceptedWithoutBody(t *testing.T) {
 	t.Parallel()
 

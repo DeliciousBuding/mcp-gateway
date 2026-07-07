@@ -606,15 +606,24 @@ func (s *Server) handleInitialize(w http.ResponseWriter, req rpcRequest) {
 }
 
 func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, req rpcRequest) {
+	if _, ok := req.Params.(map[string]any); !ok {
+		s.metrics.incRPC(req.Method, "error")
+		writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
+		return
+	}
 	var params struct {
 		Name      string         `json:"name"`
 		Arguments map[string]any `json:"arguments"`
 	}
 	raw, _ := json.Marshal(req.Params)
-	if err := json.Unmarshal(raw, &params); err != nil {
+	if err := json.Unmarshal(raw, &params); err != nil || strings.TrimSpace(params.Name) == "" {
 		s.metrics.incRPC(req.Method, "error")
 		writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
 		return
+	}
+	params.Name = strings.TrimSpace(params.Name)
+	if params.Arguments == nil {
+		params.Arguments = map[string]any{}
 	}
 	tool, ok := s.tools[params.Name]
 	if !ok {
