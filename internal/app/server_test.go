@@ -1121,21 +1121,30 @@ func TestRejectsEmptyScopedAPIKey(t *testing.T) {
 func TestRejectsMalformedScopedAPIKey(t *testing.T) {
 	t.Parallel()
 
-	srv, err := app.NewServer(app.Config{
-		Addr:             "127.0.0.1:0",
-		PublicBaseURL:    "http://example.invalid",
-		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
-		GrokAPIURL:       "http://127.0.0.1:1",
-		GrokAPIKey:       "upstream-key",
-		GrokDefaultModel: "grok-test",
-		APIKeys:          []string{"bad-scope-token=tool:grok_search|"},
-		UpstreamTimeout:  time.Second,
-		MaxConcurrency:   4,
-		RateLimitPerMin:  60,
-	})
-	if err == nil {
-		_ = srv.Close(context.Background())
-		t.Fatal("NewServer succeeded with malformed scoped API key")
+	for _, entry := range []string{
+		"bad-scope-token=tool:grok_search|",
+		"bad-scope-token=|tool:grok_search",
+		"bad-scope-token=tool:grok_search||tool:grok_extract",
+		"bad-scope-token=tool:grok_search;;tool:grok_extract",
+	} {
+		t.Run(entry, func(t *testing.T) {
+			srv, err := app.NewServer(app.Config{
+				Addr:             "127.0.0.1:0",
+				PublicBaseURL:    "http://example.invalid",
+				DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+				GrokAPIURL:       "http://127.0.0.1:1",
+				GrokAPIKey:       "upstream-key",
+				GrokDefaultModel: "grok-test",
+				APIKeys:          []string{entry},
+				UpstreamTimeout:  time.Second,
+				MaxConcurrency:   4,
+				RateLimitPerMin:  60,
+			})
+			if err == nil {
+				_ = srv.Close(context.Background())
+				t.Fatal("NewServer succeeded with malformed scoped API key")
+			}
+		})
 	}
 }
 
@@ -1163,6 +1172,67 @@ func TestRejectsInvalidAPIKeyScopes(t *testing.T) {
 			if err == nil {
 				_ = srv.Close(context.Background())
 				t.Fatal("NewServer succeeded with invalid API key scope")
+			}
+		})
+	}
+}
+
+func TestAPIKeyValidationErrorsDoNotExposeTokens(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		entries []string
+		secrets []string
+	}{
+		{
+			name:    "empty scope",
+			entries: []string{"super-secret-token="},
+			secrets: []string{"super-secret-token"},
+		},
+		{
+			name:    "malformed scope",
+			entries: []string{"super-secret-token=|tool:grok_search"},
+			secrets: []string{"super-secret-token"},
+		},
+		{
+			name:    "invalid scope",
+			entries: []string{"super-secret-token=secret-scope"},
+			secrets: []string{"super-secret-token", "secret-scope"},
+		},
+		{
+			name:    "whitespace token",
+			entries: []string{"super secret token"},
+			secrets: []string{"super secret token"},
+		},
+		{
+			name:    "duplicate token",
+			entries: []string{"super-secret-token", "super-secret-token"},
+			secrets: []string{"super-secret-token"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := app.CheckConfig(app.Config{
+				PublicBaseURL:    "http://example.invalid",
+				GrokAPIURL:       "http://127.0.0.1:1",
+				GrokAPIKey:       "upstream-key",
+				GrokDefaultModel: "grok-test",
+				APIKeys:          tc.entries,
+				UpstreamTimeout:  time.Second,
+				MaxConcurrency:   4,
+				RateLimitPerMin:  60,
+			})
+			if err == nil {
+				t.Fatal("CheckConfig succeeded with invalid API key config")
+			}
+			for _, secret := range tc.secrets {
+				if strings.Contains(err.Error(), secret) {
+					t.Fatalf("error %q exposed secret %q", err.Error(), secret)
+				}
+			}
+			if !strings.Contains(err.Error(), "api key entry") {
+				t.Fatalf("error %q does not identify the entry", err.Error())
 			}
 		})
 	}

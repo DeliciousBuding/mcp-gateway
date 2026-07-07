@@ -227,7 +227,8 @@ func validateOrigin(origin string) error {
 
 func validateAPIKeys(entries []string) error {
 	seen := make(map[string]struct{}, len(entries))
-	for _, entry := range entries {
+	for i, entry := range entries {
+		entryNumber := i + 1
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
 			continue
@@ -236,38 +237,47 @@ func validateAPIKeys(entries []string) error {
 		if before, after, ok := strings.Cut(entry, "="); ok {
 			token = strings.TrimSpace(before)
 			if token == "" {
-				return errors.New("api key token cannot be empty")
+				return fmt.Errorf("api key entry %d token cannot be empty", entryNumber)
 			}
 			if strings.TrimSpace(after) == "" {
-				return fmt.Errorf("api key %q has empty scope list", token)
+				return fmt.Errorf("api key entry %d has empty scope list", entryNumber)
 			}
+			if hasEmptyExplicitScopeSegment(after) {
+				return fmt.Errorf("api key entry %d has malformed scope list", entryNumber)
+			}
+			scopeNumber := 0
 			for _, part := range strings.FieldsFunc(after, func(r rune) bool {
 				return r == '|' || r == ';' || r == ' '
 			}) {
 				scope := strings.TrimSpace(part)
-				if scope == "" {
-					return fmt.Errorf("api key %q has malformed scope list", token)
-				}
+				scopeNumber++
 				if err := validateAPIKeyScope(scope); err != nil {
-					return fmt.Errorf("api key %q has invalid scope %q: %w", token, scope, err)
+					return fmt.Errorf("api key entry %d has invalid scope %d: %w", entryNumber, scopeNumber, err)
 				}
-			}
-			if strings.HasSuffix(strings.TrimSpace(after), "|") || strings.HasSuffix(strings.TrimSpace(after), ";") {
-				return fmt.Errorf("api key %q has malformed scope list", token)
 			}
 		}
 		if strings.TrimSpace(token) == "" {
-			return errors.New("api key token cannot be empty")
+			return fmt.Errorf("api key entry %d token cannot be empty", entryNumber)
 		}
 		if strings.IndexFunc(token, unicode.IsSpace) >= 0 {
-			return fmt.Errorf("api key token %q cannot contain whitespace", token)
+			return fmt.Errorf("api key entry %d token cannot contain whitespace", entryNumber)
 		}
 		if _, ok := seen[token]; ok {
-			return fmt.Errorf("duplicate api key %q", token)
+			return fmt.Errorf("api key entry %d duplicates an earlier token", entryNumber)
 		}
 		seen[token] = struct{}{}
 	}
 	return nil
+}
+
+func hasEmptyExplicitScopeSegment(expr string) bool {
+	normalized := strings.NewReplacer(";", "|").Replace(expr)
+	for _, part := range strings.Split(normalized, "|") {
+		if strings.TrimSpace(part) == "" {
+			return true
+		}
+	}
+	return false
 }
 
 func validateAPIKeyScope(scope string) error {
