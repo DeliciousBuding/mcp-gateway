@@ -2504,6 +2504,107 @@ func TestGrokSearchToolResolvesConfiguredModelAlias(t *testing.T) {
 	}
 }
 
+func TestGrokSearchToolUsesManagedFallbackModels(t *testing.T) {
+	t.Parallel()
+
+	var models []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		model := req["model"].(string)
+		models = append(models, model)
+		if model == "primary-managed-model" {
+			http.Error(w, "primary unavailable", http.StatusBadGateway)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{
+				map[string]any{"message": map[string]any{"content": "fallback model answer"}},
+			},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+
+	srv := newTestServer(t, &app.Config{
+		Addr:               "127.0.0.1:0",
+		PublicBaseURL:      "http://example.invalid",
+		DatabaseURL:        filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:         upstream.URL,
+		GrokAPIKey:         "upstream-key",
+		GrokDefaultModel:   "primary-managed-model",
+		GrokFallbackModels: []string{"fallback-managed-model"},
+		GrokMaxRetries:     0,
+		APIKeys:            []string{"test-token"},
+		UpstreamTimeout:    2 * time.Second,
+		MaxConcurrency:     4,
+		RateLimitPerMin:    60,
+	})
+
+	rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"grok_search","arguments":{"query":"fallback model test","use_cache":false}}}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := decodeObject(t, rec.Body.Bytes())
+	result := body["result"].(map[string]any)
+	structured := result["structuredContent"].(map[string]any)
+	if structured["model"] != "fallback-managed-model" {
+		t.Fatalf("structured model = %v", structured["model"])
+	}
+	if strings.Join(models, ",") != "primary-managed-model,fallback-managed-model" {
+		t.Fatalf("models = %#v", models)
+	}
+}
+
+func TestGrokSearchToolDoesNotFallbackForExplicitRawModel(t *testing.T) {
+	t.Parallel()
+
+	var calls int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		if req["model"] != "raw-model" {
+			t.Fatalf("model = %v, want raw-model", req["model"])
+		}
+		http.Error(w, "raw model unavailable", http.StatusBadGateway)
+	}))
+	t.Cleanup(upstream.Close)
+
+	srv := newTestServer(t, &app.Config{
+		Addr:               "127.0.0.1:0",
+		PublicBaseURL:      "http://example.invalid",
+		DatabaseURL:        filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:         upstream.URL,
+		GrokAPIKey:         "upstream-key",
+		GrokDefaultModel:   "primary-managed-model",
+		GrokFallbackModels: []string{"fallback-managed-model"},
+		GrokMaxRetries:     0,
+		APIKeys:            []string{"test-token"},
+		UpstreamTimeout:    2 * time.Second,
+		MaxConcurrency:     4,
+		RateLimitPerMin:    60,
+	})
+
+	rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"grok_search","arguments":{"query":"raw model test","model":"raw-model","use_cache":false}}}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := decodeObject(t, rec.Body.Bytes())
+	result := body["result"].(map[string]any)
+	if result["isError"] != true {
+		t.Fatalf("result = %#v, want tool error", result)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+}
+
 func TestCanceledToolCallWaitingForConcurrencyRecordsAuditError(t *testing.T) {
 	t.Parallel()
 

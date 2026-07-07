@@ -18,8 +18,10 @@ type Config struct {
 	GrokAPIURL           string
 	GrokAPIKey           string
 	GrokDefaultModel     string
+	GrokFallbackModels   []string
 	GrokMaxQueryBytes    int
 	GrokMaxResponseBytes int64
+	GrokMaxRetries       int
 	GrokDisabled         bool
 	APIKeys              []string
 	AllowedOrigins       []string
@@ -43,14 +45,15 @@ type ModelProfile struct {
 }
 
 type ToolProfile struct {
-	Name        string
-	Title       string
-	Capability  string
-	Provider    string
-	ModelRef    string
-	Description string
-	JSONMode    bool
-	SourcesOnly bool
+	Name         string
+	Title        string
+	Capability   string
+	Provider     string
+	ModelRef     string
+	FallbackRefs []string
+	Description  string
+	JSONMode     bool
+	SourcesOnly  bool
 }
 
 type RedactedConfig struct {
@@ -61,8 +64,10 @@ type RedactedConfig struct {
 	GrokAPIURLConfigured     bool                   `json:"grok_api_url_configured"`
 	GrokAPIKeyConfigured     bool                   `json:"grok_api_key_configured"`
 	GrokDefaultModel         string                 `json:"grok_default_model,omitempty"`
+	GrokFallbackModels       []string               `json:"grok_fallback_models,omitempty"`
 	GrokMaxQueryBytes        int                    `json:"grok_max_query_bytes"`
 	GrokMaxResponseBytes     int64                  `json:"grok_max_response_bytes"`
+	GrokMaxRetries           int                    `json:"grok_max_retries"`
 	APIKeyCount              int                    `json:"api_key_count"`
 	ScopedAPIKeyCount        int                    `json:"scoped_api_key_count"`
 	AllowedOrigins           []string               `json:"allowed_origins,omitempty"`
@@ -88,10 +93,11 @@ type RedactedModelProfile struct {
 }
 
 type RedactedToolProfile struct {
-	Name       string `json:"name"`
-	Capability string `json:"capability"`
-	Provider   string `json:"provider"`
-	ModelRef   string `json:"model_ref"`
+	Name         string   `json:"name"`
+	Capability   string   `json:"capability"`
+	Provider     string   `json:"provider"`
+	ModelRef     string   `json:"model_ref"`
+	FallbackRefs []string `json:"fallback_refs,omitempty"`
 }
 
 func CheckConfig(c Config) error {
@@ -179,6 +185,9 @@ func (c Config) validate() error {
 	if c.GrokMaxResponseBytes < 0 {
 		return errors.New("grok max response bytes cannot be negative")
 	}
+	if c.GrokMaxRetries < 0 {
+		return errors.New("grok max retries cannot be negative")
+	}
 	if c.PublicBaseURL != "" {
 		if err := validateHTTPURL("public base URL", c.PublicBaseURL); err != nil {
 			return err
@@ -221,10 +230,11 @@ func (c Config) redacted() RedactedConfig {
 	redactedTools := make([]RedactedToolProfile, 0, len(toolProfiles))
 	for _, profile := range toolProfiles {
 		redactedTools = append(redactedTools, RedactedToolProfile{
-			Name:       profile.Name,
-			Capability: profile.Capability,
-			Provider:   profile.Provider,
-			ModelRef:   profile.ModelRef,
+			Name:         profile.Name,
+			Capability:   profile.Capability,
+			Provider:     profile.Provider,
+			ModelRef:     profile.ModelRef,
+			FallbackRefs: append([]string(nil), profile.FallbackRefs...),
 		})
 	}
 	return RedactedConfig{
@@ -235,8 +245,10 @@ func (c Config) redacted() RedactedConfig {
 		GrokAPIURLConfigured:     strings.TrimSpace(c.GrokAPIURL) != "",
 		GrokAPIKeyConfigured:     strings.TrimSpace(c.GrokAPIKey) != "",
 		GrokDefaultModel:         c.GrokDefaultModel,
+		GrokFallbackModels:       append([]string(nil), c.GrokFallbackModels...),
 		GrokMaxQueryBytes:        c.GrokMaxQueryBytes,
 		GrokMaxResponseBytes:     c.GrokMaxResponseBytes,
+		GrokMaxRetries:           c.GrokMaxRetries,
 		APIKeyCount:              len(c.APIKeys),
 		ScopedAPIKeyCount:        scoped,
 		AllowedOrigins:           append([]string(nil), c.AllowedOrigins...),
@@ -260,11 +272,23 @@ func (c Config) modelProfiles() []ModelProfile {
 	if c.GrokDisabled {
 		return nil
 	}
-	return []ModelProfile{{
+	profiles := []ModelProfile{{
 		Name:     "grok.default",
 		Provider: "grok",
 		Model:    c.GrokDefaultModel,
 	}}
+	for i, model := range c.GrokFallbackModels {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		profiles = append(profiles, ModelProfile{
+			Name:     fmt.Sprintf("grok.fallback.%d", i+1),
+			Provider: "grok",
+			Model:    model,
+		})
+	}
+	return profiles
 }
 
 func (c Config) toolProfiles() []ToolProfile {
@@ -273,32 +297,45 @@ func (c Config) toolProfiles() []ToolProfile {
 	}
 	return []ToolProfile{
 		{
-			Name:        "grok_search",
-			Title:       "Grok Search",
-			Capability:  "web_search",
-			Provider:    "grok",
-			ModelRef:    "grok.default",
-			Description: "Search the web through the configured Grok upstream and return an answer with sources.",
+			Name:         "grok_search",
+			Title:        "Grok Search",
+			Capability:   "web_search",
+			Provider:     "grok",
+			ModelRef:     "grok.default",
+			FallbackRefs: grokFallbackRefs(c.GrokFallbackModels),
+			Description:  "Search the web through the configured Grok upstream and return an answer with sources.",
 		},
 		{
-			Name:        "grok_extract",
-			Title:       "Grok Extract",
-			Capability:  "web_extract",
-			Provider:    "grok",
-			ModelRef:    "grok.default",
-			Description: "Extract structured JSON from web context through the configured Grok upstream.",
-			JSONMode:    true,
+			Name:         "grok_extract",
+			Title:        "Grok Extract",
+			Capability:   "web_extract",
+			Provider:     "grok",
+			ModelRef:     "grok.default",
+			FallbackRefs: grokFallbackRefs(c.GrokFallbackModels),
+			Description:  "Extract structured JSON from web context through the configured Grok upstream.",
+			JSONMode:     true,
 		},
 		{
-			Name:        "grok_sources",
-			Title:       "Grok Sources",
-			Capability:  "web_sources",
-			Provider:    "grok",
-			ModelRef:    "grok.default",
-			Description: "Return only sources discovered by the configured Grok upstream.",
-			SourcesOnly: true,
+			Name:         "grok_sources",
+			Title:        "Grok Sources",
+			Capability:   "web_sources",
+			Provider:     "grok",
+			ModelRef:     "grok.default",
+			FallbackRefs: grokFallbackRefs(c.GrokFallbackModels),
+			Description:  "Return only sources discovered by the configured Grok upstream.",
+			SourcesOnly:  true,
 		},
 	}
+}
+
+func grokFallbackRefs(models []string) []string {
+	refs := make([]string, 0, len(models))
+	for i, model := range models {
+		if strings.TrimSpace(model) != "" {
+			refs = append(refs, fmt.Sprintf("grok.fallback.%d", i+1))
+		}
+	}
+	return refs
 }
 
 func validateHTTPURL(label, rawURL string) error {

@@ -22,6 +22,7 @@ type Config struct {
 	DefaultModel     string
 	Timeout          time.Duration
 	MaxResponseBytes int64
+	MaxRetries       int
 }
 
 type Client struct {
@@ -30,10 +31,11 @@ type Client struct {
 }
 
 type SearchRequest struct {
-	Query     string
-	Model     string
-	MaxTokens int
-	JSONMode  bool
+	Query          string
+	Model          string
+	FallbackModels []string
+	MaxTokens      int
+	JSONMode       bool
 }
 
 type SearchResponse struct {
@@ -55,6 +57,9 @@ func NewClient(cfg Config) *Client {
 	}
 	if cfg.MaxResponseBytes <= 0 {
 		cfg.MaxResponseBytes = 4 << 20
+	}
+	if cfg.MaxRetries < 0 {
+		cfg.MaxRetries = 0
 	}
 	return &Client{
 		cfg: cfg,
@@ -81,31 +86,64 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchResponse,
 	if c.cfg.APIURL == "" {
 		return SearchResponse{}, errors.New("grok api url is required")
 	}
-	model := req.Model
-	if model == "" {
-		model = c.cfg.DefaultModel
-	}
-	if model == "" {
-		model = "grok-4.3-fast"
-	}
+	models := c.searchModels(req)
 	maxTokens := req.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = 2048
 	}
-	system := defaultSystemPrompt
-	if req.JSONMode {
-		system += " Return ONLY valid JSON. No markdown, no code block."
+
+	var lastErr error
+	for _, model := range models {
+		for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
+			res, err := c.searchOnce(ctx, req, model, maxTokens)
+			if err == nil {
+				return res, nil
+			}
+			lastErr = err
+			if !isRetryableUpstreamError(err) || attempt == c.cfg.MaxRetries || ctx.Err() != nil {
+				break
+			}
+			if err := sleepWithContext(ctx, retryBackoff(attempt)); err != nil {
+				return SearchResponse{}, errors.New("grok upstream request failed")
+			}
+		}
+		if !isFallbackableUpstreamError(lastErr) {
+			return SearchResponse{}, lastErr
+		}
 	}
-	payload := map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "system", "content": system},
-			{"role": "user", "content": req.Query},
-		},
-		"max_tokens": maxTokens,
-		"stream":     false,
+	if lastErr != nil {
+		return SearchResponse{}, lastErr
 	}
-	body, err := json.Marshal(payload)
+	return SearchResponse{}, errors.New("grok upstream request failed")
+}
+
+func (c *Client) searchModels(req SearchRequest) []string {
+	models := make([]string, 0, 1+len(req.FallbackModels))
+	model := strings.TrimSpace(req.Model)
+	if model == "" {
+		model = strings.TrimSpace(c.cfg.DefaultModel)
+	}
+	if model == "" {
+		model = "grok-4.3-fast"
+	}
+	models = append(models, model)
+	seen := map[string]struct{}{model: struct{}{}}
+	for _, fallback := range req.FallbackModels {
+		fallback = strings.TrimSpace(fallback)
+		if fallback == "" {
+			continue
+		}
+		if _, ok := seen[fallback]; ok {
+			continue
+		}
+		models = append(models, fallback)
+		seen[fallback] = struct{}{}
+	}
+	return models
+}
+
+func (c *Client) searchOnce(ctx context.Context, req SearchRequest, model string, maxTokens int) (SearchResponse, error) {
+	body, err := json.Marshal(searchPayload(req, model, maxTokens))
 	if err != nil {
 		return SearchResponse{}, err
 	}
@@ -122,7 +160,7 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchResponse,
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
-		return SearchResponse{}, errors.New("grok upstream request failed")
+		return SearchResponse{}, errUpstreamRequestFailed
 	}
 	defer resp.Body.Close()
 	readLimit := c.cfg.MaxResponseBytes + 1
@@ -137,7 +175,7 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchResponse,
 		return SearchResponse{}, fmt.Errorf("grok upstream response too large (max_bytes=%d)", c.cfg.MaxResponseBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return SearchResponse{}, fmt.Errorf("grok upstream status %d (body_bytes=%d)", resp.StatusCode, len(raw))
+		return SearchResponse{}, upstreamStatusError{status: resp.StatusCode, bodyBytes: len(raw)}
 	}
 
 	var decoded struct {
@@ -159,4 +197,75 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchResponse,
 		Sources: decoded.SearchSources,
 		Model:   model,
 	}, nil
+}
+
+func searchPayload(req SearchRequest, model string, maxTokens int) map[string]any {
+	system := defaultSystemPrompt
+	if req.JSONMode {
+		system += " Return ONLY valid JSON. No markdown, no code block."
+	}
+	return map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": system},
+			{"role": "user", "content": req.Query},
+		},
+		"max_tokens": maxTokens,
+		"stream":     false,
+	}
+}
+
+var errUpstreamRequestFailed = errors.New("grok upstream request failed")
+
+type upstreamStatusError struct {
+	status    int
+	bodyBytes int
+}
+
+func (e upstreamStatusError) Error() string {
+	return fmt.Sprintf("grok upstream status %d (body_bytes=%d)", e.status, e.bodyBytes)
+}
+
+func isRetryableUpstreamError(err error) bool {
+	if errors.Is(err, errUpstreamRequestFailed) {
+		return true
+	}
+	var statusErr upstreamStatusError
+	if errors.As(err, &statusErr) {
+		switch statusErr.status {
+		case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			return true
+		}
+	}
+	return false
+}
+
+func isFallbackableUpstreamError(err error) bool {
+	if errors.Is(err, errUpstreamRequestFailed) {
+		return true
+	}
+	var statusErr upstreamStatusError
+	return errors.As(err, &statusErr)
+}
+
+func retryBackoff(attempt int) time.Duration {
+	d := 100 * time.Millisecond
+	for i := 0; i < attempt; i++ {
+		d *= 2
+	}
+	if d > 2*time.Second {
+		return 2 * time.Second
+	}
+	return d
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

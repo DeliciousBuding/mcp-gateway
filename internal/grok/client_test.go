@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,6 +45,85 @@ func TestClientParsesOpenAICompatibleSearchSources(t *testing.T) {
 	}
 	if len(res.Sources) != 1 || res.Sources[0].URL != "https://example.com" {
 		t.Fatalf("sources = %#v", res.Sources)
+	}
+}
+
+func TestClientRetriesTransientUpstreamFailure(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			http.Error(w, "temporary failure", http.StatusBadGateway)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{map[string]any{"message": map[string]any{"content": "ok after retry"}}},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+
+	client := grok.NewClient(grok.Config{
+		APIURL:       upstream.URL,
+		DefaultModel: "grok-test",
+		Timeout:      time.Second,
+		MaxRetries:   1,
+	})
+	res, err := client.Search(context.Background(), grok.SearchRequest{
+		Query:     "Retry this transient upstream failure and return the successful answer.",
+		MaxTokens: 128,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Content != "ok after retry" {
+		t.Fatalf("content = %q", res.Content)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("calls = %d, want 2", calls.Load())
+	}
+}
+
+func TestClientFallsBackToNextModelAfterUpstreamFailure(t *testing.T) {
+	t.Parallel()
+
+	var models []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		model := req["model"].(string)
+		models = append(models, model)
+		if model == "primary-model" {
+			http.Error(w, "primary model unavailable", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{map[string]any{"message": map[string]any{"content": "fallback answer"}}},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+
+	client := grok.NewClient(grok.Config{
+		APIURL:       upstream.URL,
+		DefaultModel: "primary-model",
+		Timeout:      time.Second,
+		MaxRetries:   0,
+	})
+	res, err := client.Search(context.Background(), grok.SearchRequest{
+		Query:          "Use fallback if the primary model is unavailable.",
+		FallbackModels: []string{"fallback-model"},
+		MaxTokens:      128,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Content != "fallback answer" || res.Model != "fallback-model" {
+		t.Fatalf("response = %#v", res)
+	}
+	if strings.Join(models, ",") != "primary-model,fallback-model" {
+		t.Fatalf("models = %#v", models)
 	}
 }
 

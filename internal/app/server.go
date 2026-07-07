@@ -125,6 +125,18 @@ func (r modelRegistry) resolve(provider, ref string) string {
 	return ref
 }
 
+func (r modelRegistry) resolveAll(provider string, refs []string) []string {
+	models := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		models = append(models, r.resolve(provider, ref))
+	}
+	return models
+}
+
 func NewServer(cfg Config) (*Server, error) {
 	cfg = cfg.normalized()
 	if err := cfg.validate(); err != nil {
@@ -171,6 +183,7 @@ func NewServer(cfg Config) (*Server, error) {
 			DefaultModel:     models.resolve("grok", "grok.default"),
 			Timeout:          cfg.UpstreamTimeout,
 			MaxResponseBytes: cfg.GrokMaxResponseBytes,
+			MaxRetries:       cfg.GrokMaxRetries,
 		})
 		for _, profile := range cfg.toolProfiles() {
 			s.RegisterTool(newGrokSearchTool(profile, models, grokClient, st, cfg.CacheTTL, cfg.GrokMaxQueryBytes))
@@ -1377,8 +1390,15 @@ func (t *grokSearchTool) Call(ctx context.Context, args map[string]any) (ToolCal
 	}
 	modelInput, _ := args["model"].(string)
 	model := t.models.resolve(t.profile.Provider, t.profile.ModelRef)
+	fallbackModels := t.models.resolveAll(t.profile.Provider, t.profile.FallbackRefs)
 	if strings.TrimSpace(modelInput) != "" {
-		model = t.models.resolve(t.profile.Provider, strings.TrimSpace(modelInput))
+		input := strings.TrimSpace(modelInput)
+		if _, ok := t.models.byName[input]; ok {
+			model = t.models.resolve(t.profile.Provider, input)
+		} else {
+			model = input
+			fallbackModels = nil
+		}
 	}
 	maxTokens := 0
 	if rawMaxTokens, ok := args["max_tokens"]; ok {
@@ -1398,7 +1418,7 @@ func (t *grokSearchTool) Call(ctx context.Context, args map[string]any) (ToolCal
 			return ToolCallResult{Text: entry.Value, SourceCnt: entry.SourceCnt, Structured: map[string]any{"cached": true}, CacheResult: "hit"}, nil
 		}
 	}
-	res, err := t.client.Search(ctx, grok.SearchRequest{Query: query, Model: model, MaxTokens: maxTokens, JSONMode: t.profile.JSONMode})
+	res, err := t.client.Search(ctx, grok.SearchRequest{Query: query, Model: model, FallbackModels: fallbackModels, MaxTokens: maxTokens, JSONMode: t.profile.JSONMode})
 	if err != nil {
 		return ToolCallResult{}, err
 	}

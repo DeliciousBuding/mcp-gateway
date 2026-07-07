@@ -10,7 +10,7 @@ The gateway exposes MCP Streamable HTTP at `/mcp`, keeps provider logic behind a
 - `grok_extract` - Grok-backed structured extraction.
 - `grok_sources` - source-only Grok lookup.
 
-These tools are registered from internal tool profiles. The built-in model alias `grok.default` points at `GROK_DEFAULT_MODEL`, so operators can manage the provider model once and reuse it across search, extraction, and source-only profiles.
+These tools are registered from internal tool profiles. The built-in model alias `grok.default` points at `GROK_DEFAULT_MODEL`, and optional `grok.fallback.N` aliases point at `GROK_FALLBACK_MODELS`, so operators can manage provider models once and reuse them across search, extraction, and source-only profiles.
 
 ## Run locally
 
@@ -78,6 +78,8 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Short-lived SQLite response cache is enabled by default; tune `MCP_GATEWAY_CACHE_TTL` or set `use_cache=false` per tool call. Cache keys are SHA-256 digests, so raw prompts and search briefs are not stored in cache key columns.
 - Grok query text is capped by `GROK_MAX_QUERY_BYTES` (default `32768`) before upstream calls or cache writes.
 - Grok upstream response bodies are capped by `GROK_MAX_RESPONSE_BYTES` (default `4194304`) before JSON parsing or caching.
+- Grok transient upstream failures are retried per model with `GROK_MAX_RETRIES` (default `2`). Retryable failures include transport errors, `408`, `429`, and `5xx`.
+- `GROK_FALLBACK_MODELS` adds managed fallback model aliases. Default or alias-based tool calls can fall through the chain after upstream failure; explicit raw `model` arguments bypass fallback so callers can pin a provider model exactly.
 - Grok tool calls validate `max_tokens` at runtime and reject values outside `1..8192` before contacting the upstream provider.
 - Background SQLite cleanup is controlled by `MCP_GATEWAY_CLEANUP_INTERVAL`; `MCP_GATEWAY_AUDIT_RETENTION` limits audit growth while expired cache entries are always pruned.
 - Audit rows do not persist client remote addresses by default; set `MCP_GATEWAY_AUDIT_REMOTE_ADDR=true` only when that metadata is operationally required.
@@ -105,11 +107,15 @@ GROK_ENABLED=true
 GROK_API_URL=https://api.example.com/v1/chat/completions
 GROK_API_KEY=replace-with-provider-key
 GROK_DEFAULT_MODEL=grok-4.3-fast
+GROK_FALLBACK_MODELS=grok-4.3,grok-4.2-fast
+GROK_MAX_RETRIES=2
 GROK_MAX_QUERY_BYTES=32768
 GROK_MAX_RESPONSE_BYTES=4194304
 ```
 
 Use your own reverse proxy or provider endpoint behind `GROK_API_URL`; the gateway does not hard-code any private upstream host.
+
+Use fallback models for operator-managed resilience, not for caller-controlled routing. A tool call that omits `model` or uses an alias such as `grok.default` can retry and then fall back. A tool call that passes a raw provider model name is sent only to that model.
 
 Set `GROK_ENABLED=false` to run the gateway without registering Grok tools. This mode does not require `GROK_API_URL` or `GROK_API_KEY`, which keeps the public gateway binary usable as a provider-neutral base.
 

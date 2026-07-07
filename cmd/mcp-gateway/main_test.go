@@ -202,6 +202,28 @@ func TestCheckConfigRejectsNegativeMaxBodyBytesFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestCheckConfigRejectsNegativeGrokMaxRetriesFromEnvironment(t *testing.T) {
+	var stdout bytes.Buffer
+
+	err := runWithArgs([]string{
+		"-check-config",
+		"-grok-api-url", "https://grok.example/v1/chat/completions",
+		"-api-keys", "test-token",
+	}, map[string]string{
+		"GROK_MAX_RETRIES": "-1",
+	}, &stdout)
+
+	if err == nil {
+		t.Fatal("expected check-config to reject negative Grok max retries")
+	}
+	if !strings.Contains(err.Error(), "grok max retries cannot be negative") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no success output, got %q", stdout.String())
+	}
+}
+
 func TestCheckConfigAllowsGrokDisabledWithoutUpstreamURL(t *testing.T) {
 	var stdout bytes.Buffer
 
@@ -232,6 +254,7 @@ func TestPrintConfigRedactsSecretsAndDoesNotOpenDatabase(t *testing.T) {
 		"-api-keys", "test-token,scoped-token=tool:grok_search|provider:grok",
 		"-grok-api-url", "https://private-provider.example/v1/chat/completions",
 		"-grok-api-key", "secret-upstream-key",
+		"-grok-fallback-models", "grok-fallback-a,grok-fallback-b",
 		"-allowed-origins", "https://agents.example.com",
 	}, map[string]string{}, &stdout)
 
@@ -264,8 +287,8 @@ func TestPrintConfigRedactsSecretsAndDoesNotOpenDatabase(t *testing.T) {
 		t.Fatalf("grok_max_response_bytes = %v, want 4194304 in %s", cfg["grok_max_response_bytes"], raw)
 	}
 	models, ok := cfg["models"].([]any)
-	if !ok || len(models) != 1 {
-		t.Fatalf("models = %#v, want one model profile in %s", cfg["models"], raw)
+	if !ok || len(models) != 3 {
+		t.Fatalf("models = %#v, want three model profiles in %s", cfg["models"], raw)
 	}
 	model := models[0].(map[string]any)
 	if model["name"] != "grok.default" || model["provider"] != "grok" {
@@ -274,6 +297,11 @@ func TestPrintConfigRedactsSecretsAndDoesNotOpenDatabase(t *testing.T) {
 	tools, ok := cfg["tool_profiles"].([]any)
 	if !ok || len(tools) != 3 {
 		t.Fatalf("tool_profiles = %#v, want three tool profiles in %s", cfg["tool_profiles"], raw)
+	}
+	tool := tools[0].(map[string]any)
+	fallbackRefs, ok := tool["fallback_refs"].([]any)
+	if !ok || len(fallbackRefs) != 2 {
+		t.Fatalf("fallback_refs = %#v, want two fallback refs in %s", tool["fallback_refs"], raw)
 	}
 	if cfg["audit_remote_addr"] != false {
 		t.Fatalf("audit_remote_addr = %v, want false in %s", cfg["audit_remote_addr"], raw)
