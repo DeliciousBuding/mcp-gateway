@@ -1083,6 +1083,25 @@ func TestNotificationReturnsAcceptedWithoutBody(t *testing.T) {
 	}
 }
 
+func TestNotificationMethodWithIDIsInvalidRequest(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":1,"method":"notifications/initialized"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := decodeObject(t, rec.Body.Bytes())
+	errObj, ok := body["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing error in %s", rec.Body.String())
+	}
+	if errObj["code"] != float64(-32600) {
+		t.Fatalf("error code = %v, want -32600 in %s", errObj["code"], rec.Body.String())
+	}
+}
+
 func TestJSONRPCNotificationWithoutIDReturnsNoBody(t *testing.T) {
 	t.Parallel()
 

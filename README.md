@@ -64,7 +64,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Requests with `MCP-Protocol-Version` must use `2025-06-18`; omitted versions are treated as the current supported version.
 - MCP JSON-RPC `ping` is supported and returns an empty result for client/server liveness checks.
 - MCP request ids are validated as string or integer values; omit `id` for notifications. `null`, boolean, object, array, and fractional ids are rejected as invalid requests.
-- JSON-RPC notifications without an `id` return `202` with no response body.
+- JSON-RPC notifications without an `id` return `202` with no response body; notification methods sent with an `id` are rejected as invalid requests.
 - SQLite runs with WAL, `synchronous=NORMAL`, and one writer connection for predictable low-memory operation.
 - Short-lived SQLite response cache is enabled by default; tune `MCP_GATEWAY_CACHE_TTL` or set `use_cache=false` per tool call. Cache keys are SHA-256 digests, so raw prompts and search briefs are not stored in cache key columns.
 - Grok query text is capped by `GROK_MAX_QUERY_BYTES` (default `32768`) before upstream calls or cache writes.

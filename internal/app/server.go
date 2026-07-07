@@ -549,7 +549,11 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !req.HasID {
-		s.metrics.incRPC("notification", "accepted")
+		if req.Method == "notifications/initialized" {
+			s.metrics.incRPC("notifications/initialized", "ok")
+		} else {
+			s.metrics.incRPC("notification", "accepted")
+		}
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
@@ -565,8 +569,8 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		s.metrics.incRPC(req.Method, "ok")
 		writeRPC(w, req.ID, map[string]any{}, rpcError{})
 	case "notifications/initialized":
-		s.metrics.incRPC(req.Method, "ok")
-		w.WriteHeader(http.StatusAccepted)
+		s.metrics.incRPC(req.Method, "error")
+		writeRPC(w, req.ID, nil, rpcError{-32600, "invalid request"})
 	case "tools/list":
 		tools := make([]ToolDefinition, 0, len(s.tools))
 		agent, _ := r.Context().Value(agentKey{}).(agentIdentity)
