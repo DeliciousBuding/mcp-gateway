@@ -52,6 +52,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - API key configuration is strict: duplicate tokens, empty tokens, whitespace in tokens, empty or malformed scoped token lists, and unsupported scope formats fail startup.
 - HTTPS `MCP_GATEWAY_PUBLIC_BASE_URL` requires at least one API key at startup; this prevents accidental anonymous public exposure.
 - `GROK_API_URL`, `MCP_GATEWAY_PUBLIC_BASE_URL`, `MCP_GATEWAY_ALLOWED_ORIGINS`, and `MCP_GATEWAY_AUTHORIZATION_SERVERS` are validated at startup to catch malformed deployment config early. `GROK_API_URL` is required only when `GROK_ENABLED=true`.
+- Negative resource limits and durations are rejected at startup instead of silently falling back to defaults.
 - Run `mcp-gateway --check-config` in CI or before deployment. It validates effective configuration and exits without opening SQLite or listening on a port.
 - Run `mcp-gateway --print-config` during deployment diagnostics. It validates effective configuration, prints redacted JSON, and exits without opening SQLite or listening on a port.
 - Run `mcp-gateway --version` to print build metadata. Release builds can inject `Version`, `Commit`, and `Date` with Go ldflags or Docker build args.

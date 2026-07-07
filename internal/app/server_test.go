@@ -1168,6 +1168,50 @@ func TestRejectsInvalidAPIKeyScopes(t *testing.T) {
 	}
 }
 
+func TestRejectsNegativeResourceLimits(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		mutate func(*app.Config)
+	}{
+		{name: "upstream timeout", mutate: func(c *app.Config) { c.UpstreamTimeout = -time.Second }},
+		{name: "cache ttl", mutate: func(c *app.Config) { c.CacheTTL = -time.Second }},
+		{name: "audit retention", mutate: func(c *app.Config) { c.AuditRetention = -time.Second }},
+		{name: "cleanup interval", mutate: func(c *app.Config) { c.CleanupInterval = -time.Second }},
+		{name: "max concurrency", mutate: func(c *app.Config) { c.MaxConcurrency = -1 }},
+		{name: "rate limit", mutate: func(c *app.Config) { c.RateLimitPerMin = -1 }},
+		{name: "max body bytes", mutate: func(c *app.Config) { c.MaxBodyBytes = -1 }},
+		{name: "grok max query bytes", mutate: func(c *app.Config) { c.GrokMaxQueryBytes = -1 }},
+		{name: "grok max response bytes", mutate: func(c *app.Config) { c.GrokMaxResponseBytes = -1 }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := app.Config{
+				Addr:                 "127.0.0.1:0",
+				PublicBaseURL:        "http://example.invalid",
+				DatabaseURL:          filepath.Join(t.TempDir(), "audit.db"),
+				GrokAPIURL:           "http://127.0.0.1:1",
+				GrokAPIKey:           "upstream-key",
+				GrokDefaultModel:     "grok-test",
+				GrokMaxQueryBytes:    8,
+				GrokMaxResponseBytes: 1024,
+				APIKeys:              []string{"test-token"},
+				UpstreamTimeout:      time.Second,
+				MaxConcurrency:       4,
+				RateLimitPerMin:      60,
+				MaxBodyBytes:         1024,
+			}
+			tc.mutate(&cfg)
+			srv, err := app.NewServer(cfg)
+			if err == nil {
+				_ = srv.Close(context.Background())
+				t.Fatal("NewServer succeeded with negative resource limit")
+			}
+		})
+	}
+}
+
 func TestAcceptsWildcardAPIKeyScope(t *testing.T) {
 	t.Parallel()
 

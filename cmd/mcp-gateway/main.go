@@ -183,7 +183,7 @@ func splitCSV(value string) []string {
 
 func intEnv(getenv func(string, string) string, key string, fallback int) int {
 	var v int
-	if _, err := fmt.Sscanf(getenv(key, ""), "%d", &v); err == nil && v > 0 {
+	if _, err := fmt.Sscanf(getenv(key, ""), "%d", &v); err == nil {
 		return v
 	}
 	return fallback
@@ -191,14 +191,14 @@ func intEnv(getenv func(string, string) string, key string, fallback int) int {
 
 func int64Env(getenv func(string, string) string, key string, fallback int64) int64 {
 	var v int64
-	if _, err := fmt.Sscanf(getenv(key, ""), "%d", &v); err == nil && v > 0 {
+	if _, err := fmt.Sscanf(getenv(key, ""), "%d", &v); err == nil {
 		return v
 	}
 	return fallback
 }
 
 func durationEnv(getenv func(string, string) string, key string, fallback time.Duration) time.Duration {
-	if v, err := time.ParseDuration(getenv(key, "")); err == nil && v >= 0 {
+	if v, err := time.ParseDuration(getenv(key, "")); err == nil {
 		return v
 	}
 	return fallback

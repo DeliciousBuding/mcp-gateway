@@ -81,29 +81,23 @@ func (c Config) normalized() Config {
 	if c.DatabaseURL == "" {
 		c.DatabaseURL = "mcp-gateway.db"
 	}
-	if c.UpstreamTimeout <= 0 {
+	if c.UpstreamTimeout == 0 {
 		c.UpstreamTimeout = 60 * time.Second
 	}
-	if c.MaxConcurrency <= 0 {
+	if c.MaxConcurrency == 0 {
 		c.MaxConcurrency = 8
 	}
-	if c.RateLimitPerMin <= 0 {
+	if c.RateLimitPerMin == 0 {
 		c.RateLimitPerMin = 60
 	}
-	if c.MaxBodyBytes <= 0 {
+	if c.MaxBodyBytes == 0 {
 		c.MaxBodyBytes = 1 << 20
 	}
-	if c.GrokMaxQueryBytes <= 0 {
+	if c.GrokMaxQueryBytes == 0 {
 		c.GrokMaxQueryBytes = 32 << 10
 	}
-	if c.GrokMaxResponseBytes <= 0 {
+	if c.GrokMaxResponseBytes == 0 {
 		c.GrokMaxResponseBytes = 4 << 20
-	}
-	if c.AuditRetention < 0 {
-		c.AuditRetention = 0
-	}
-	if c.CleanupInterval < 0 {
-		c.CleanupInterval = 0
 	}
 	if len(c.AllowedOrigins) == 0 && c.PublicBaseURL != "" {
 		if u, err := url.Parse(c.PublicBaseURL); err == nil && u.Scheme != "" && u.Host != "" {
@@ -121,6 +115,33 @@ func (c Config) validate() error {
 		if err := validateHTTPURL("grok API URL", c.GrokAPIURL); err != nil {
 			return err
 		}
+	}
+	if c.UpstreamTimeout < 0 {
+		return errors.New("upstream timeout cannot be negative")
+	}
+	if c.CacheTTL < 0 {
+		return errors.New("cache TTL cannot be negative")
+	}
+	if c.AuditRetention < 0 {
+		return errors.New("audit retention cannot be negative")
+	}
+	if c.CleanupInterval < 0 {
+		return errors.New("cleanup interval cannot be negative")
+	}
+	if c.MaxConcurrency < 0 {
+		return errors.New("max concurrency cannot be negative")
+	}
+	if c.RateLimitPerMin < 0 {
+		return errors.New("rate limit per minute cannot be negative")
+	}
+	if c.MaxBodyBytes < 0 {
+		return errors.New("max body bytes cannot be negative")
+	}
+	if c.GrokMaxQueryBytes < 0 {
+		return errors.New("grok max query bytes cannot be negative")
+	}
+	if c.GrokMaxResponseBytes < 0 {
+		return errors.New("grok max response bytes cannot be negative")
 	}
 	if c.PublicBaseURL != "" {
 		if err := validateHTTPURL("public base URL", c.PublicBaseURL); err != nil {

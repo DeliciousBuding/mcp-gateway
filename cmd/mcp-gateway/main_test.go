@@ -138,6 +138,28 @@ func TestCheckConfigAcceptsMaxBodyBytesFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestCheckConfigRejectsNegativeMaxBodyBytesFromEnvironment(t *testing.T) {
+	var stdout bytes.Buffer
+
+	err := runWithArgs([]string{
+		"-check-config",
+		"-grok-api-url", "https://grok.example/v1/chat/completions",
+		"-api-keys", "test-token",
+	}, map[string]string{
+		"MCP_GATEWAY_MAX_BODY_BYTES": "-1",
+	}, &stdout)
+
+	if err == nil {
+		t.Fatal("expected check-config to reject negative max body bytes")
+	}
+	if !strings.Contains(err.Error(), "max body bytes cannot be negative") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no success output, got %q", stdout.String())
+	}
+}
+
 func TestCheckConfigAllowsGrokDisabledWithoutUpstreamURL(t *testing.T) {
 	var stdout bytes.Buffer
 
