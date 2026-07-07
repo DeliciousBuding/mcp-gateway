@@ -587,12 +587,40 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleInitialize(w http.ResponseWriter, req rpcRequest) {
-	var params struct {
-		ProtocolVersion string `json:"protocolVersion"`
+	params, ok := req.Params.(map[string]any)
+	if !ok {
+		s.metrics.incRPC(req.Method, "error")
+		writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
+		return
 	}
-	if req.Params != nil {
-		raw, _ := json.Marshal(req.Params)
-		if err := json.Unmarshal(raw, &params); err != nil || strings.TrimSpace(params.ProtocolVersion) == "" {
+	if protocol, ok := params["protocolVersion"].(string); !ok || strings.TrimSpace(protocol) == "" {
+		s.metrics.incRPC(req.Method, "error")
+		writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
+		return
+	}
+	if _, ok := params["capabilities"].(map[string]any); !ok {
+		s.metrics.incRPC(req.Method, "error")
+		writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
+		return
+	}
+	clientInfo, ok := params["clientInfo"].(map[string]any)
+	if !ok {
+		s.metrics.incRPC(req.Method, "error")
+		writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
+		return
+	}
+	if name, ok := clientInfo["name"].(string); !ok || strings.TrimSpace(name) == "" {
+		s.metrics.incRPC(req.Method, "error")
+		writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
+		return
+	}
+	if version, ok := clientInfo["version"].(string); !ok || strings.TrimSpace(version) == "" {
+		s.metrics.incRPC(req.Method, "error")
+		writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
+		return
+	}
+	if title, ok := clientInfo["title"]; ok {
+		if _, ok := title.(string); !ok {
 			s.metrics.incRPC(req.Method, "error")
 			writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
 			return

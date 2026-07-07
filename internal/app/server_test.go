@@ -1055,22 +1055,35 @@ func TestInitializeReturnsToolsCapability(t *testing.T) {
 	}
 }
 
-func TestInitializeRejectsMalformedProtocolVersionParam(t *testing.T) {
+func TestInitializeRejectsMalformedParams(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServer(t, nil)
-	rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":20250618}}`)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
-	}
-	body := decodeObject(t, rec.Body.Bytes())
-	errObj, ok := body["error"].(map[string]any)
-	if !ok {
-		t.Fatalf("missing error in %s", rec.Body.String())
-	}
-	if errObj["code"] != float64(-32602) {
-		t.Fatalf("error code = %v, want -32602 in %s", errObj["code"], rec.Body.String())
+	for _, bodyText := range []string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"initialize","params":null}`,
+		`{"jsonrpc":"2.0","id":3,"method":"initialize","params":{"protocolVersion":20250618,"capabilities":{},"clientInfo":{"name":"test-client","version":"0.1.0"}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"initialize","params":{"protocolVersion":"   ","capabilities":{},"clientInfo":{"name":"test-client","version":"0.1.0"}}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":"bad","clientInfo":{"name":"test-client","version":"0.1.0"}}}`,
+		`{"jsonrpc":"2.0","id":6,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":null}}`,
+		`{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"","version":"0.1.0"}}}`,
+		`{"jsonrpc":"2.0","id":8,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":1}}}`,
+		`{"jsonrpc":"2.0","id":9,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"0.1.0","title":1}}}`,
+	} {
+		t.Run(bodyText, func(t *testing.T) {
+			rec := doMCP(t, srv, bodyText)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			body := decodeObject(t, rec.Body.Bytes())
+			errObj, ok := body["error"].(map[string]any)
+			if !ok {
+				t.Fatalf("missing error in %s", rec.Body.String())
+			}
+			if errObj["code"] != float64(-32602) || errObj["message"] != "invalid params" {
+				t.Fatalf("error = %#v, want invalid params in %s", errObj, rec.Body.String())
+			}
+		})
 	}
 }
 
