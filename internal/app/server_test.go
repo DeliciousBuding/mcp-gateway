@@ -1139,6 +1139,31 @@ func TestRejectsMalformedScopedAPIKey(t *testing.T) {
 	}
 }
 
+func TestRejectsAPIKeyTokenWithWhitespace(t *testing.T) {
+	t.Parallel()
+
+	for _, entry := range []string{"bad token", "bad token=tool:grok_search"} {
+		t.Run(entry, func(t *testing.T) {
+			srv, err := app.NewServer(app.Config{
+				Addr:             "127.0.0.1:0",
+				PublicBaseURL:    "http://example.invalid",
+				DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+				GrokAPIURL:       "http://127.0.0.1:1",
+				GrokAPIKey:       "upstream-key",
+				GrokDefaultModel: "grok-test",
+				APIKeys:          []string{entry},
+				UpstreamTimeout:  time.Second,
+				MaxConcurrency:   4,
+				RateLimitPerMin:  60,
+			})
+			if err == nil {
+				_ = srv.Close(context.Background())
+				t.Fatal("NewServer succeeded with whitespace in API key token")
+			}
+		})
+	}
+}
+
 func TestRejectsBlankBearerToken(t *testing.T) {
 	t.Parallel()
 

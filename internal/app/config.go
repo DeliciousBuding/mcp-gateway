@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type Config struct {
@@ -232,6 +233,9 @@ func validateAPIKeys(entries []string) error {
 		}
 		if strings.TrimSpace(token) == "" {
 			return errors.New("api key token cannot be empty")
+		}
+		if strings.IndexFunc(token, unicode.IsSpace) >= 0 {
+			return fmt.Errorf("api key token %q cannot contain whitespace", token)
 		}
 		if _, ok := seen[token]; ok {
 			return fmt.Errorf("duplicate api key %q", token)

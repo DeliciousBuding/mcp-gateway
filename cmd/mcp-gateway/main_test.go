@@ -57,6 +57,26 @@ func TestCheckConfigReturnsValidationErrors(t *testing.T) {
 	}
 }
 
+func TestCheckConfigRejectsAPIKeyTokenWithWhitespace(t *testing.T) {
+	var stdout bytes.Buffer
+
+	err := runWithArgs([]string{
+		"-check-config",
+		"-grok-api-url", "https://grok.example/v1/chat/completions",
+		"-api-keys", "bad token",
+	}, map[string]string{}, &stdout)
+
+	if err == nil {
+		t.Fatal("expected check-config to reject whitespace in API key token")
+	}
+	if !strings.Contains(err.Error(), "cannot contain whitespace") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no success output, got %q", stdout.String())
+	}
+}
+
 func TestVersionFlagPrintsBuildMetadata(t *testing.T) {
 	oldVersion, oldCommit, oldDate := buildinfo.Version, buildinfo.Commit, buildinfo.Date
 	buildinfo.Version = "v1.2.3"
