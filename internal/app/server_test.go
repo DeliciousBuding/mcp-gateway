@@ -1810,6 +1810,43 @@ func TestOptionsDoesNotRequireAuth(t *testing.T) {
 	}
 }
 
+func TestOptionsRejectsUnsupportedRequestedMethod(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		PublicBaseURL:    "https://mcp.example.com/mcp",
+		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:       "http://127.0.0.1:1",
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"test-token"},
+		UpstreamTimeout:  time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  60,
+	})
+	req := httptest.NewRequest(http.MethodOptions, "/mcp", nil)
+	req.Header.Set("Origin", "https://mcp.example.com")
+	req.Header.Set("Access-Control-Request-Method", "DELETE")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Allow"); got != "POST" {
+		t.Fatalf("Allow = %q, want POST", got)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Methods"); got != "" {
+		t.Fatalf("Access-Control-Allow-Methods = %q, want empty on rejected preflight", got)
+	}
+	body := decodeObject(t, rec.Body.Bytes())
+	if body["error"] != "method not allowed" {
+		t.Fatalf("body = %#v", body)
+	}
+}
+
 func TestOriginAllowlistRejectsUntrustedOrigin(t *testing.T) {
 	t.Parallel()
 
