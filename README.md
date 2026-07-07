@@ -83,7 +83,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - `mcp_gateway_build_info` includes version, commit, and build date labels for runtime identification.
 - Send `X-Request-Id` from upstream proxies or clients when possible. The gateway echoes it back; otherwise it generates a 128-bit hex request id.
 - Access logs are structured JSON and include request id, method, route, status, duration, and the hashed agent id when authenticated. They intentionally do not log bearer tokens, request bodies, tool arguments, or upstream prompts.
-- SQLite audit rows in `tool_calls` include the same request id, so operators can join HTTP logs to tool execution records without storing prompts, tokens, or client addresses by default.
+- SQLite audit rows in `tool_calls` include the same request id, so operators can join HTTP logs to tool execution records without storing prompts, tokens, or client addresses by default. Tool-call audit writes use a short background timeout so canceled client requests can still record final status when possible.
 - Provider failures are sanitized before returning to clients or audit rows: non-2xx responses are reported by status and body size only, and transport errors do not include upstream URLs or paths.
 - HTTP panic recovery turns unexpected provider/tool panics into a stable `500` JSON response, records the request id, and avoids logging request bodies or bearer tokens.
 

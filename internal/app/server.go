@@ -649,7 +649,9 @@ func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, req rpcR
 	}
 	requestID, _ := r.Context().Value(requestIDKey{}).(string)
 	defer func() {
-		_ = s.store.RecordToolCall(r.Context(), store.ToolCall{
+		auditCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.store.RecordToolCall(auditCtx, store.ToolCall{
 			AgentID:    agent.ID,
 			RequestID:  requestID,
 			ToolName:   params.Name,
@@ -665,6 +667,11 @@ func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, req rpcR
 	case s.upstreamC <- struct{}{}:
 		defer func() { <-s.upstreamC }()
 	case <-r.Context().Done():
+		s.metrics.incRPC(req.Method, "error")
+		s.metrics.incTool(params.Name, "error")
+		status = "error"
+		errText = "request canceled"
+		s.metrics.observeTool(params.Name, status, time.Since(start))
 		writeRPC(w, req.ID, nil, rpcError{-32000, "request canceled"})
 		return
 	}

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1666,6 +1667,89 @@ func TestGrokSearchToolCallsUpstreamAndStoresAudit(t *testing.T) {
 	if remoteAddr != "" {
 		t.Fatalf("remote_addr = %q, want empty by default", remoteAddr)
 	}
+}
+
+func TestCanceledToolCallWaitingForConcurrencyRecordsAuditError(t *testing.T) {
+	t.Parallel()
+
+	upstreamEntered := make(chan struct{})
+	releaseUpstream := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseUpstream) }) }
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-upstreamEntered:
+		default:
+			close(upstreamEntered)
+		}
+		<-releaseUpstream
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{
+				map[string]any{
+					"message": map[string]any{"content": "released"},
+				},
+			},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+	t.Cleanup(release)
+
+	dbPath := filepath.Join(t.TempDir(), "audit-canceled.db")
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		PublicBaseURL:    "http://example.invalid",
+		DatabaseURL:      dbPath,
+		GrokAPIURL:       upstream.URL,
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"test-token"},
+		UpstreamTimeout:  5 * time.Second,
+		MaxConcurrency:   1,
+		RateLimitPerMin:  60,
+	})
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"grok_search","arguments":{"query":"hold concurrency","use_cache":false}}}`)
+		if rec.Code != http.StatusOK {
+			t.Errorf("holder status = %d body=%s", rec.Code, rec.Body.String())
+		}
+	}()
+	<-upstreamEntered
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := newMCPRequest(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"grok_search","arguments":{"query":"cancel while waiting","use_cache":false}}}`)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := decodeObject(t, rec.Body.Bytes())
+	errObj, ok := body["error"].(map[string]any)
+	if !ok || errObj["code"] != float64(-32000) {
+		t.Fatalf("error = %#v body=%s", errObj, rec.Body.String())
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var status, errText string
+	if err := db.QueryRowContext(context.Background(), `select status, error_text from tool_calls where request_id=?`, rec.Header().Get("X-Request-Id")).Scan(&status, &errText); err != nil {
+		t.Fatal(err)
+	}
+	if status != "error" || errText != "request canceled" {
+		t.Fatalf("audit status=%q error_text=%q, want canceled error", status, errText)
+	}
+
+	release()
+	wg.Wait()
 }
 
 func TestAuditRemoteAddrRequiresOptIn(t *testing.T) {
