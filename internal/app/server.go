@@ -1138,9 +1138,15 @@ func acceptsMCPPost(values []string) bool {
 	acceptsSSE := false
 	for _, value := range values {
 		for _, part := range strings.Split(value, ",") {
-			mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(part))
+			mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(part))
 			if err != nil {
 				continue
+			}
+			if q, ok := params["q"]; ok {
+				weight, err := strconv.ParseFloat(q, 64)
+				if err != nil || weight <= 0 {
+					continue
+				}
 			}
 			switch mediaType {
 			case "*/*":
