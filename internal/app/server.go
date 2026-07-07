@@ -607,10 +607,18 @@ func (s *Server) handleInitialize(w http.ResponseWriter, req rpcRequest) {
 }
 
 func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, req rpcRequest) {
-	if _, ok := req.Params.(map[string]any); !ok {
+	paramObj, ok := req.Params.(map[string]any)
+	if !ok {
 		s.metrics.incRPC(req.Method, "error")
 		writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
 		return
+	}
+	if args, ok := paramObj["arguments"]; ok {
+		if _, ok := args.(map[string]any); !ok {
+			s.metrics.incRPC(req.Method, "error")
+			writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
+			return
+		}
 	}
 	var params struct {
 		Name      string         `json:"name"`

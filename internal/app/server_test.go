@@ -1152,6 +1152,9 @@ func TestToolsCallRejectsMalformedParams(t *testing.T) {
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":null}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{}}`,
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"   ","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"grok_search","arguments":null}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"grok_search","arguments":"bad"}}`,
+		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"grok_search","arguments":[]}}`,
 	} {
 		t.Run(bodyText, func(t *testing.T) {
 			rec := doMCP(t, srv, bodyText)
