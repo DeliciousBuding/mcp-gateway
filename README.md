@@ -62,6 +62,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Unauthorized MCP responses include `WWW-Authenticate: Bearer resource_metadata="..."`, pointing clients at the RFC 9728 protected-resource metadata URL. For path-based resources such as `/mcp`, the gateway also serves `/.well-known/oauth-protected-resource/mcp` while keeping the root well-known endpoint for compatibility.
 - MCP Streamable HTTP `POST /mcp` requires `Content-Type: application/json` and an `Accept` header compatible with both `application/json` and `text/event-stream`.
 - Requests with `MCP-Protocol-Version` must use `2025-06-18`; omitted versions are treated as the current supported version.
+- `initialize.params.protocolVersion`, when provided, must be a non-empty string; the gateway responds with its supported `2025-06-18` protocol version.
 - MCP JSON-RPC `ping` is supported and returns an empty result for client/server liveness checks.
 - MCP request ids are validated as string or integer values; omit `id` for notifications. `null`, boolean, object, array, and fractional ids are rejected as invalid requests.
 - JSON-RPC notifications without an `id` return `202` with no response body; notification methods sent with an `id` are rejected as invalid requests.

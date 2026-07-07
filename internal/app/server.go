@@ -559,12 +559,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch req.Method {
 	case "initialize":
-		s.metrics.incRPC(req.Method, "ok")
-		writeRPC(w, req.ID, map[string]any{
-			"protocolVersion": protocolVersion,
-			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
-			"serverInfo":      map[string]any{"name": "mcp-gateway", "version": buildinfo.Version},
-		}, rpcError{})
+		s.handleInitialize(w, req)
 	case "ping":
 		s.metrics.incRPC(req.Method, "ok")
 		writeRPC(w, req.ID, map[string]any{}, rpcError{})
@@ -588,6 +583,26 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		s.metrics.incRPC(req.Method, "error")
 		writeRPC(w, req.ID, nil, rpcError{-32601, "method not found"})
 	}
+}
+
+func (s *Server) handleInitialize(w http.ResponseWriter, req rpcRequest) {
+	var params struct {
+		ProtocolVersion string `json:"protocolVersion"`
+	}
+	if req.Params != nil {
+		raw, _ := json.Marshal(req.Params)
+		if err := json.Unmarshal(raw, &params); err != nil || strings.TrimSpace(params.ProtocolVersion) == "" {
+			s.metrics.incRPC(req.Method, "error")
+			writeRPC(w, req.ID, nil, rpcError{-32602, "invalid params"})
+			return
+		}
+	}
+	s.metrics.incRPC(req.Method, "ok")
+	writeRPC(w, req.ID, map[string]any{
+		"protocolVersion": protocolVersion,
+		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
+		"serverInfo":      map[string]any{"name": "mcp-gateway", "version": buildinfo.Version},
+	}, rpcError{})
 }
 
 func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, req rpcRequest) {
