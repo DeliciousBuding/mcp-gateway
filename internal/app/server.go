@@ -634,8 +634,17 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		writeRPC(w, nil, nil, rpcError{-32700, "parse error"})
 		return
 	}
-	if req.JSONRPC != "2.0" || strings.TrimSpace(req.Method) == "" {
-		writeRPC(w, req.ID, nil, rpcError{-32600, "invalid request"})
+	if req.JSONRPC != "2.0" {
+		writeRPCStatusNoID(w, http.StatusBadRequest, rpcError{-32600, "invalid request"})
+		return
+	}
+	if req.IsResponse {
+		s.metrics.incRPC("response", "accepted")
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	if req.IsMalformedResponse || strings.TrimSpace(req.Method) == "" {
+		writeRPCStatusNoID(w, http.StatusBadRequest, rpcError{-32600, "invalid request"})
 		return
 	}
 	if req.HasID && !isValidRPCID(req.ID) {
@@ -1020,14 +1029,17 @@ func histogramLabels(names []string, values []string) string {
 }
 
 type rpcRequest struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      any    `json:"id,omitempty"`
-	HasID   bool   `json:"-"`
-	Method  string `json:"method"`
-	Params  any    `json:"params,omitempty"`
+	JSONRPC             string `json:"jsonrpc"`
+	ID                  any    `json:"id,omitempty"`
+	HasID               bool   `json:"-"`
+	IsResponse          bool   `json:"-"`
+	IsMalformedResponse bool   `json:"-"`
+	Method              string `json:"method"`
+	Params              any    `json:"params,omitempty"`
 }
 
 func (r *rpcRequest) UnmarshalJSON(data []byte) error {
+	*r = rpcRequest{}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
@@ -1051,6 +1063,11 @@ func (r *rpcRequest) UnmarshalJSON(data []byte) error {
 			return err
 		}
 	}
+	_, hasResult := fields["result"]
+	_, hasError := fields["error"]
+	responseShaped := r.Method == "" && (hasResult || hasError)
+	r.IsResponse = responseShaped && r.HasID && isValidRPCID(r.ID) && (hasResult != hasError)
+	r.IsMalformedResponse = responseShaped && !r.IsResponse
 	return nil
 }
 
@@ -1075,13 +1092,22 @@ type rpcError struct {
 }
 
 func writeRPC(w http.ResponseWriter, id any, result any, rpcErr rpcError) {
+	writeRPCStatus(w, http.StatusOK, id, result, rpcErr)
+}
+
+func writeRPCStatus(w http.ResponseWriter, status int, id any, result any, rpcErr rpcError) {
 	resp := map[string]any{"jsonrpc": "2.0", "id": id}
 	if rpcErr.Code != 0 {
 		resp["error"] = rpcErr
 	} else {
 		resp["result"] = result
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, status, resp)
+}
+
+func writeRPCStatusNoID(w http.ResponseWriter, status int, rpcErr rpcError) {
+	resp := map[string]any{"jsonrpc": "2.0", "error": rpcErr}
+	writeJSON(w, status, resp)
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

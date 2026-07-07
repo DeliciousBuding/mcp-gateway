@@ -1520,13 +1520,14 @@ func TestRejectsInvalidJSONRPCEnvelope(t *testing.T) {
 
 	srv := newTestServer(t, nil)
 	for _, tc := range []struct {
-		name string
-		body string
-		code int
+		name             string
+		body             string
+		code             int
+		wantRPCNoIDError bool
 	}{
 		{name: "batch not supported", body: `[{"jsonrpc":"2.0","id":1,"method":"tools/list"}]`, code: http.StatusBadRequest},
-		{name: "missing method", body: `{"jsonrpc":"2.0","id":1}`, code: http.StatusOK},
-		{name: "wrong jsonrpc", body: `{"jsonrpc":"1.0","id":1,"method":"tools/list"}`, code: http.StatusOK},
+		{name: "missing method", body: `{"jsonrpc":"2.0","id":1}`, code: http.StatusBadRequest, wantRPCNoIDError: true},
+		{name: "wrong jsonrpc", body: `{"jsonrpc":"1.0","id":1,"method":"tools/list"}`, code: http.StatusBadRequest, wantRPCNoIDError: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := newMCPRequest(tc.body)
@@ -1535,11 +1536,14 @@ func TestRejectsInvalidJSONRPCEnvelope(t *testing.T) {
 			if rec.Code != tc.code {
 				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 			}
-			if tc.code == http.StatusOK {
+			if tc.wantRPCNoIDError {
 				body := decodeObject(t, rec.Body.Bytes())
 				errObj, ok := body["error"].(map[string]any)
 				if !ok || errObj["code"] == nil {
 					t.Fatalf("missing JSON-RPC error in %s", rec.Body.String())
+				}
+				if _, ok := body["id"]; ok {
+					t.Fatalf("transport-level error should not include id in %s", rec.Body.String())
 				}
 			}
 		})
@@ -1630,6 +1634,67 @@ func TestJSONRPCNotificationWithoutIDReturnsNoBody(t *testing.T) {
 	}
 	if bytes.Contains(metrics.Body.Bytes(), []byte("unknown/notification")) {
 		t.Fatalf("metrics should not expose arbitrary notification method names:\n%s", metrics.Body.String())
+	}
+}
+
+func TestJSONRPCResponseReturnsAcceptedWithoutBody(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	for _, bodyText := range []string{
+		`{"jsonrpc":"2.0","id":1,"result":{}}`,
+		`{"jsonrpc":"2.0","id":"req-1","error":{"code":-32601,"message":"method not found"}}`,
+	} {
+		t.Run(bodyText, func(t *testing.T) {
+			rec := doMCP(t, srv, bodyText)
+			if rec.Code != http.StatusAccepted {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			if rec.Body.Len() != 0 {
+				t.Fatalf("body = %q, want empty", rec.Body.String())
+			}
+		})
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metrics := httptest.NewRecorder()
+	srv.ServeHTTP(metrics, req)
+	want := `mcp_gateway_rpc_requests_total{method="response",status="accepted"} 2`
+	if !bytes.Contains(metrics.Body.Bytes(), []byte(want)) {
+		t.Fatalf("metrics missing %q in:\n%s", want, metrics.Body.String())
+	}
+}
+
+func TestJSONRPCResponseRejectsMalformedEnvelope(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	for _, bodyText := range []string{
+		`{"jsonrpc":"1.0","id":1,"result":{}}`,
+		`{"jsonrpc":"2.0","result":{}}`,
+		`{"jsonrpc":"2.0","id":1,"result":{},"error":{"code":-32601,"message":"method not found"}}`,
+		`{"jsonrpc":"2.0","id":true,"result":{}}`,
+		`{"jsonrpc":"2.0","id":{"nested":1},"error":{"code":-32601,"message":"method not found"}}`,
+		`{"jsonrpc":"2.0","id":1.5,"result":{}}`,
+	} {
+		t.Run(bodyText, func(t *testing.T) {
+			rec := doMCP(t, srv, bodyText)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			body := decodeObject(t, rec.Body.Bytes())
+			errObj, ok := body["error"].(map[string]any)
+			if !ok {
+				t.Fatalf("missing error in %s", rec.Body.String())
+			}
+			if errObj["code"] != float64(-32600) {
+				t.Fatalf("error code = %v, want -32600 in %s", errObj["code"], rec.Body.String())
+			}
+			if _, ok := body["id"]; ok {
+				t.Fatalf("transport-level response rejection should not include id in %s", rec.Body.String())
+			}
+		})
 	}
 }
 

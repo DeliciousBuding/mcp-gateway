@@ -68,6 +68,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - MCP JSON-RPC `ping` is supported and returns an empty result for client/server liveness checks.
 - MCP request ids are validated as string or integer values; omit `id` for notifications. `null`, boolean, object, array, and fractional ids are rejected as invalid requests.
 - JSON-RPC notifications without an `id` return `202` with no response body; notification methods sent with an `id` are rejected as invalid requests.
+- JSON-RPC response messages sent by clients are accepted with `202` and no response body; malformed response-shaped envelopes are rejected with `400` and no response id.
 - `tools/call.params` must be an object with a non-empty `name`; when present, `arguments` must be an object. Malformed tool-call params return JSON-RPC `-32602`.
 - SQLite runs with WAL, `synchronous=NORMAL`, and one writer connection for predictable low-memory operation.
 - Short-lived SQLite response cache is enabled by default; tune `MCP_GATEWAY_CACHE_TTL` or set `use_cache=false` per tool call. Cache keys are SHA-256 digests, so raw prompts and search briefs are not stored in cache key columns.
