@@ -334,6 +334,61 @@ func TestMetricsExposesOperationalCounters(t *testing.T) {
 	}
 }
 
+func TestMetricsRejectsUnsupportedMethods(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	req := httptest.NewRequest(http.MethodPost, "/metrics", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if allow := rec.Header().Get("Allow"); allow != "GET, HEAD" {
+		t.Fatalf("Allow = %q, want GET, HEAD", allow)
+	}
+	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte("mcp_gateway_build_info")) {
+		t.Fatalf("POST /metrics returned metrics body:\n%s", rec.Body.String())
+	}
+}
+
+func TestProtectedMetricsUnauthorizedResponseIncludesSecurityHeaders(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		PublicBaseURL:    "http://example.invalid",
+		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:       "http://127.0.0.1:1",
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"test-token"},
+		ProtectMetrics:   true,
+		UpstreamTimeout:  time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  60,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if got := rec.Header().Get("Referrer-Policy"); got != "no-referrer" {
+		t.Fatalf("Referrer-Policy = %q, want no-referrer", got)
+	}
+}
+
 func TestMetricsCountsUnauthorizedRequests(t *testing.T) {
 	t.Parallel()
 

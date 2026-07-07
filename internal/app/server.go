@@ -277,13 +277,18 @@ func (s *Server) routes() {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "mcp-gateway", "database": "ok"})
 	})
 	s.mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		setSecurityHeaders(w)
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+			return
+		}
 		if s.cfg.ProtectMetrics {
 			if _, ok := s.authenticateRequest(r); !ok {
 				s.writeUnauthorized(w)
 				return
 			}
 		}
-		setSecurityHeaders(w)
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = fmt.Fprintf(w, "# HELP mcp_gateway_build_info Static build information for the gateway.\n")
 		_, _ = fmt.Fprintf(w, "# TYPE mcp_gateway_build_info gauge\n")
