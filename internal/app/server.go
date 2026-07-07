@@ -267,6 +267,10 @@ func (s *Server) routes() {
 		if !allowGETOrHEAD(w, r) {
 			return
 		}
+		if r.Method == http.MethodHead {
+			writeJSONHead(w, http.StatusOK)
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "mcp-gateway"})
 	})
 	s.mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +281,15 @@ func (s *Server) routes() {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()
 		if err := s.store.Ping(ctx); err != nil {
+			if r.Method == http.MethodHead {
+				writeJSONHead(w, http.StatusServiceUnavailable)
+				return
+			}
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "service": "mcp-gateway", "database": "down"})
+			return
+		}
+		if r.Method == http.MethodHead {
+			writeJSONHead(w, http.StatusOK)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "mcp-gateway", "database": "ok"})
@@ -294,6 +306,10 @@ func (s *Server) routes() {
 			}
 		}
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		_, _ = fmt.Fprintf(w, "# HELP mcp_gateway_build_info Static build information for the gateway.\n")
 		_, _ = fmt.Fprintf(w, "# TYPE mcp_gateway_build_info gauge\n")
 		_, _ = fmt.Fprintf(w, "mcp_gateway_build_info{service=\"mcp-gateway\",version=%q,commit=%q,date=%q} 1\n", buildinfo.Version, buildinfo.Commit, buildinfo.Date)
@@ -1024,6 +1040,11 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+func writeJSONHead(w http.ResponseWriter, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
 }
 
 type agentKey struct{}

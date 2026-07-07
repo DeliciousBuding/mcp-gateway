@@ -211,6 +211,40 @@ func TestOperationalReadinessEndpointsRejectUnsupportedMethods(t *testing.T) {
 	}
 }
 
+func TestOperationalReadOnlyEndpointsHeadReturnsNoBody(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	for _, tc := range []struct {
+		path        string
+		contentType string
+	}{
+		{path: "/health", contentType: "application/json"},
+		{path: "/ready", contentType: "application/json"},
+		{path: "/metrics", contentType: "text/plain; version=0.0.4"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodHead, tc.path, nil)
+			rec := httptest.NewRecorder()
+
+			srv.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			if rec.Body.Len() != 0 {
+				t.Fatalf("body = %q, want empty", rec.Body.String())
+			}
+			if got := rec.Header().Get("Content-Type"); got != tc.contentType {
+				t.Fatalf("Content-Type = %q, want %q", got, tc.contentType)
+			}
+			if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+				t.Fatalf("Cache-Control = %q, want no-store", got)
+			}
+		})
+	}
+}
+
 func TestSecurityHeadersDisableCaching(t *testing.T) {
 	t.Parallel()
 
