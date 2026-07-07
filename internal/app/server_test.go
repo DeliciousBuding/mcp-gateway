@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -351,6 +352,40 @@ func TestMetricsCountsUnauthorizedRequests(t *testing.T) {
 	want := `mcp_gateway_http_requests_total{route="/mcp",method="POST",status="401"} 1`
 	if !bytes.Contains(rec.Body.Bytes(), []byte(want)) {
 		t.Fatalf("metrics missing %q in:\n%s", want, rec.Body.String())
+	}
+}
+
+func TestRateLimitIncludesRetryAfterHeader(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		PublicBaseURL:    "http://example.invalid",
+		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:       "http://127.0.0.1:1",
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"test-token"},
+		UpstreamTimeout:  time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  1,
+	})
+
+	first := doMCP(t, srv, `{"jsonrpc":"2.0","id":1,"method":"ping"}`)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d body=%s", first.Code, first.Body.String())
+	}
+	second := doMCP(t, srv, `{"jsonrpc":"2.0","id":2,"method":"ping"}`)
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d body=%s", second.Code, second.Body.String())
+	}
+	retryAfter := second.Header().Get("Retry-After")
+	if retryAfter == "" {
+		t.Fatal("missing Retry-After header")
+	}
+	seconds, err := strconv.Atoi(retryAfter)
+	if err != nil || seconds < 1 || seconds > 60 {
+		t.Fatalf("Retry-After = %q, want seconds in 1..60", retryAfter)
 	}
 }
 

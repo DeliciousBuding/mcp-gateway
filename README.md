@@ -74,7 +74,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Grok tool calls validate `max_tokens` at runtime and reject values outside `1..8192` before contacting the upstream provider.
 - Background SQLite cleanup is controlled by `MCP_GATEWAY_CLEANUP_INTERVAL`; `MCP_GATEWAY_AUDIT_RETENTION` limits audit growth while expired cache entries are always pruned.
 - Audit rows do not persist client remote addresses by default; set `MCP_GATEWAY_AUDIT_REMOTE_ADDR=true` only when that metadata is operationally required.
-- Limit upstream pressure with `MCP_GATEWAY_MAX_CONCURRENCY` and `MCP_GATEWAY_RATE_LIMIT_PER_MIN`.
+- Limit upstream pressure with `MCP_GATEWAY_MAX_CONCURRENCY` and `MCP_GATEWAY_RATE_LIMIT_PER_MIN`; built-in 429 responses include `Retry-After` for client backoff.
 - Limit MCP JSON request size with `MCP_GATEWAY_MAX_BODY_BYTES` (default `1048576`). Oversized requests return HTTP `413` before JSON-RPC dispatch.
 - Put nginx/Cloudflare rate limits in front of the app for public exposure.
 - Use `/health` for process liveness and `/ready` for SQLite-backed readiness.

@@ -418,7 +418,8 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 		if recorder, ok := w.(interface{ setAgentID(string) }); ok {
 			recorder.setAgentID(agent.ID)
 		}
-		if !s.limiter.Allow(agent.ID) {
+		if allowed, retryAfter := s.limiter.Allow(agent.ID); !allowed {
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
 			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "rate limit exceeded"})
 			return
 		}
@@ -1110,9 +1111,9 @@ func newRateLimiter(limit int) *rateLimiter {
 	return &rateLimiter{limit: limit, window: time.Minute, counters: map[string]rateCounter{}}
 }
 
-func (l *rateLimiter) Allow(key string) bool {
+func (l *rateLimiter) Allow(key string) (bool, time.Duration) {
 	if l.limit <= 0 {
-		return true
+		return true, 0
 	}
 	now := time.Now()
 	l.mu.Lock()
@@ -1123,11 +1124,11 @@ func (l *rateLimiter) Allow(key string) bool {
 	}
 	if c.used >= l.limit {
 		l.counters[key] = c
-		return false
+		return false, time.Until(c.reset)
 	}
 	c.used++
 	l.counters[key] = c
-	return true
+	return true, 0
 }
 
 type grokSearchTool struct {
