@@ -301,7 +301,7 @@ func (s *Server) routes() {
 		}
 		if s.cfg.ProtectMetrics {
 			if _, ok := s.authenticateRequest(r); !ok {
-				s.writeUnauthorized(w)
+				s.writeUnauthorized(w, r)
 				return
 			}
 		}
@@ -325,7 +325,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/.well-known/oauth-protected-resource/", s.handleOAuthProtectedResourceMetadata)
 	s.mux.HandleFunc("/mcp", s.trackHTTP("/mcp", s.withSecurity(s.auth(s.handleMCP))))
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		writeNotFound(w)
+		writeNotFound(w, r)
 	})
 }
 
@@ -382,7 +382,7 @@ func (s *Server) handleOAuthProtectedResourceMetadata(w http.ResponseWriter, r *
 	setSecurityHeaders(w)
 	metadataPath := s.protectedResourceMetadataPath()
 	if r.URL.Path != "/.well-known/oauth-protected-resource" && r.URL.Path != metadataPath {
-		writeNotFound(w)
+		writeNotFound(w, r)
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -403,8 +403,12 @@ func (s *Server) handleOAuthProtectedResourceMetadata(w http.ResponseWriter, r *
 	writeJSON(w, http.StatusOK, body)
 }
 
-func writeNotFound(w http.ResponseWriter) {
+func writeNotFound(w http.ResponseWriter, r *http.Request) {
 	setSecurityHeaders(w)
+	if r.Method == http.MethodHead {
+		writeJSONHead(w, http.StatusNotFound)
+		return
+	}
 	writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 }
 
@@ -457,7 +461,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		agent, ok := s.authenticateRequest(r)
 		if !ok {
-			s.writeUnauthorized(w)
+			s.writeUnauthorized(w, r)
 			return
 		}
 		if recorder, ok := w.(interface{ setAgentID(string) }); ok {
@@ -489,8 +493,12 @@ func bearerToken(header string) (string, bool) {
 	return parts[1], true
 }
 
-func (s *Server) writeUnauthorized(w http.ResponseWriter) {
+func (s *Server) writeUnauthorized(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer resource_metadata="%s"`, s.protectedResourceMetadataURL()))
+	if r.Method == http.MethodHead {
+		writeJSONHead(w, http.StatusUnauthorized)
+		return
+	}
 	writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "missing or invalid bearer token"})
 }
 
