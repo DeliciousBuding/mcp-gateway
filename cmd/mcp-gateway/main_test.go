@@ -263,6 +263,18 @@ func TestPrintConfigRedactsSecretsAndDoesNotOpenDatabase(t *testing.T) {
 	if cfg["grok_max_response_bytes"] != float64(4194304) {
 		t.Fatalf("grok_max_response_bytes = %v, want 4194304 in %s", cfg["grok_max_response_bytes"], raw)
 	}
+	models, ok := cfg["models"].([]any)
+	if !ok || len(models) != 1 {
+		t.Fatalf("models = %#v, want one model profile in %s", cfg["models"], raw)
+	}
+	model := models[0].(map[string]any)
+	if model["name"] != "grok.default" || model["provider"] != "grok" {
+		t.Fatalf("model profile = %#v", model)
+	}
+	tools, ok := cfg["tool_profiles"].([]any)
+	if !ok || len(tools) != 3 {
+		t.Fatalf("tool_profiles = %#v, want three tool profiles in %s", cfg["tool_profiles"], raw)
+	}
 	if cfg["audit_remote_addr"] != false {
 		t.Fatalf("audit_remote_addr = %v, want false in %s", cfg["audit_remote_addr"], raw)
 	}

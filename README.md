@@ -10,6 +10,8 @@ The gateway exposes MCP Streamable HTTP at `/mcp`, keeps provider logic behind a
 - `grok_extract` - Grok-backed structured extraction.
 - `grok_sources` - source-only Grok lookup.
 
+These tools are registered from internal tool profiles. The built-in model alias `grok.default` points at `GROK_DEFAULT_MODEL`, so operators can manage the provider model once and reuse it across search, extraction, and source-only profiles.
+
 ## Run locally
 
 ```powershell
@@ -115,6 +117,7 @@ Set `GROK_ENABLED=false` to run the gateway without registering Grok tools. This
 
 - Single binary, no Redis required.
 - Provider-neutral tool registry.
+- Built-in web capability profiles (`web_search`, `web_extract`, `web_sources`) are backed by the Grok provider today, while model aliases keep the tool layer reusable for future providers.
 - Stateless Streamable HTTP mode by default: `POST /mcp` for JSON-RPC; streaming `GET /mcp` is deliberately disabled until session/SSE semantics are needed, and `DELETE /mcp` returns a clear 405 because the gateway does not issue server-side sessions.
 - Tool definitions expose MCP metadata (`title`, `annotations`, `outputSchema`) so clients can reason about safety and display.
 - JSON structured logs through Go `slog`, including one access log event per HTTP request.

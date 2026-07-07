@@ -2447,6 +2447,63 @@ func TestGrokSearchToolCallsUpstreamAndStoresAudit(t *testing.T) {
 	}
 }
 
+func TestGrokSearchToolResolvesConfiguredModelAlias(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		if req["model"] != "grok-managed-model" {
+			t.Fatalf("model = %v, want configured model", req["model"])
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{
+				map[string]any{"message": map[string]any{"content": "managed model answer"}},
+			},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		PublicBaseURL:    "http://example.invalid",
+		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:       upstream.URL,
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-managed-model",
+		APIKeys:          []string{"test-token"},
+		UpstreamTimeout:  2 * time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  60,
+	})
+
+	rec := doMCP(t, srv, `{
+		"jsonrpc":"2.0",
+		"id":1,
+		"method":"tools/call",
+		"params":{
+			"name":"grok_search",
+			"arguments":{
+				"query":"use managed model alias",
+				"model":"grok.default",
+				"use_cache":false
+			}
+		}
+	}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := decodeObject(t, rec.Body.Bytes())
+	result := body["result"].(map[string]any)
+	structured := result["structuredContent"].(map[string]any)
+	if structured["model"] != "grok-managed-model" {
+		t.Fatalf("structured model = %v", structured["model"])
+	}
+}
+
 func TestCanceledToolCallWaitingForConcurrencyRecordsAuditError(t *testing.T) {
 	t.Parallel()
 

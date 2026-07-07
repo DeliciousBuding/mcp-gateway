@@ -106,6 +106,25 @@ type ToolCallResult struct {
 	CacheResult string
 }
 
+type modelRegistry struct {
+	byName map[string]ModelProfile
+}
+
+func newModelRegistry(profiles []ModelProfile) modelRegistry {
+	registry := modelRegistry{byName: make(map[string]ModelProfile, len(profiles))}
+	for _, profile := range profiles {
+		registry.byName[profile.Name] = profile
+	}
+	return registry
+}
+
+func (r modelRegistry) resolve(provider, ref string) string {
+	if profile, ok := r.byName[ref]; ok && profile.Provider == provider {
+		return profile.Model
+	}
+	return ref
+}
+
 func NewServer(cfg Config) (*Server, error) {
 	cfg = cfg.normalized()
 	if err := cfg.validate(); err != nil {
@@ -145,16 +164,17 @@ func NewServer(cfg Config) (*Server, error) {
 		}
 	}
 	if !cfg.GrokDisabled {
+		models := newModelRegistry(cfg.modelProfiles())
 		grokClient := grok.NewClient(grok.Config{
 			APIURL:           cfg.GrokAPIURL,
 			APIKey:           cfg.GrokAPIKey,
-			DefaultModel:     cfg.GrokDefaultModel,
+			DefaultModel:     models.resolve("grok", "grok.default"),
 			Timeout:          cfg.UpstreamTimeout,
 			MaxResponseBytes: cfg.GrokMaxResponseBytes,
 		})
-		s.RegisterTool(newGrokSearchTool("grok_search", "Search the web through the configured Grok upstream and return an answer with sources.", grokClient, st, cfg.CacheTTL, cfg.GrokMaxQueryBytes, false, false))
-		s.RegisterTool(newGrokSearchTool("grok_extract", "Extract structured JSON from web context through the configured Grok upstream.", grokClient, st, cfg.CacheTTL, cfg.GrokMaxQueryBytes, true, false))
-		s.RegisterTool(newGrokSearchTool("grok_sources", "Return only sources discovered by the configured Grok upstream.", grokClient, st, cfg.CacheTTL, cfg.GrokMaxQueryBytes, false, true))
+		for _, profile := range cfg.toolProfiles() {
+			s.RegisterTool(newGrokSearchTool(profile, models, grokClient, st, cfg.CacheTTL, cfg.GrokMaxQueryBytes))
+		}
 	}
 	if _, err := s.prune(context.Background()); err != nil {
 		_ = st.Close()
@@ -1298,35 +1318,33 @@ func (l *rateLimiter) Allow(key string) (bool, time.Duration) {
 }
 
 type grokSearchTool struct {
-	name        string
-	description string
-	client      interface {
+	profile ToolProfile
+	models  modelRegistry
+	client  interface {
 		Search(context.Context, grok.SearchRequest) (grok.SearchResponse, error)
 	}
 	cache         *store.Store
 	cacheTTL      time.Duration
 	maxQueryBytes int
-	jsonMode      bool
-	sourcesOnly   bool
 }
 
-func newGrokSearchTool(name, description string, client interface {
+func newGrokSearchTool(profile ToolProfile, models modelRegistry, client interface {
 	Search(context.Context, grok.SearchRequest) (grok.SearchResponse, error)
-}, cache *store.Store, cacheTTL time.Duration, maxQueryBytes int, jsonMode, sourcesOnly bool) *grokSearchTool {
-	return &grokSearchTool{name: name, description: description, client: client, cache: cache, cacheTTL: cacheTTL, maxQueryBytes: maxQueryBytes, jsonMode: jsonMode, sourcesOnly: sourcesOnly}
+}, cache *store.Store, cacheTTL time.Duration, maxQueryBytes int) *grokSearchTool {
+	return &grokSearchTool{profile: profile, models: models, client: client, cache: cache, cacheTTL: cacheTTL, maxQueryBytes: maxQueryBytes}
 }
 
 func (t *grokSearchTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        t.name,
-		Title:       toolTitle(t.name),
-		Description: t.description,
+		Name:        t.profile.Name,
+		Title:       t.profile.Title,
+		Description: t.profile.Description,
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []string{"query"},
 			"properties": map[string]any{
 				"query":      map[string]any{"type": "string", "description": "Full natural-language research brief. Include what to find, context, and desired output.", "maxLength": t.maxQueryBytes},
-				"model":      map[string]any{"type": "string"},
+				"model":      map[string]any{"type": "string", "description": "Optional raw provider model name or configured model alias such as grok.default."},
 				"max_tokens": map[string]any{"type": "integer", "minimum": 1, "maximum": 8192},
 				"use_cache":  map[string]any{"type": "boolean", "description": "Use short-lived SQLite response cache. Defaults to true."},
 			},
@@ -1339,26 +1357,13 @@ func (t *grokSearchTool) Definition() ToolDefinition {
 				"cached":  map[string]any{"type": "boolean"},
 			},
 		},
-		Scopes: []string{"provider:grok", "tool:" + t.name},
+		Scopes: []string{"provider:" + t.profile.Provider, "tool:" + t.profile.Name},
 		Annotations: ToolAnnotations{
 			ReadOnlyHint:    true,
 			DestructiveHint: false,
 			IdempotentHint:  true,
 			OpenWorldHint:   true,
 		},
-	}
-}
-
-func toolTitle(name string) string {
-	switch name {
-	case "grok_search":
-		return "Grok Search"
-	case "grok_extract":
-		return "Grok Extract"
-	case "grok_sources":
-		return "Grok Sources"
-	default:
-		return name
 	}
 }
 
@@ -1370,7 +1375,11 @@ func (t *grokSearchTool) Call(ctx context.Context, args map[string]any) (ToolCal
 	if len([]byte(strings.TrimSpace(query))) > t.maxQueryBytes {
 		return ToolCallResult{}, fmt.Errorf("query exceeds max query size of %d bytes", t.maxQueryBytes)
 	}
-	model, _ := args["model"].(string)
+	modelInput, _ := args["model"].(string)
+	model := t.models.resolve(t.profile.Provider, t.profile.ModelRef)
+	if strings.TrimSpace(modelInput) != "" {
+		model = t.models.resolve(t.profile.Provider, strings.TrimSpace(modelInput))
+	}
 	maxTokens := 0
 	if rawMaxTokens, ok := args["max_tokens"]; ok {
 		var err error
@@ -1389,20 +1398,20 @@ func (t *grokSearchTool) Call(ctx context.Context, args map[string]any) (ToolCal
 			return ToolCallResult{Text: entry.Value, SourceCnt: entry.SourceCnt, Structured: map[string]any{"cached": true}, CacheResult: "hit"}, nil
 		}
 	}
-	res, err := t.client.Search(ctx, grok.SearchRequest{Query: query, Model: model, MaxTokens: maxTokens, JSONMode: t.jsonMode})
+	res, err := t.client.Search(ctx, grok.SearchRequest{Query: query, Model: model, MaxTokens: maxTokens, JSONMode: t.profile.JSONMode})
 	if err != nil {
 		return ToolCallResult{}, err
 	}
 	structured := map[string]any{"sources": res.Sources, "model": res.Model}
 	text := res.Content
-	if t.sourcesOnly {
+	if t.profile.SourcesOnly {
 		b, err := json.MarshalIndent(res.Sources, "", "  ")
 		if err != nil {
 			return ToolCallResult{}, fmt.Errorf("marshal sources: %w", err)
 		}
 		text = string(b)
 	}
-	if len(res.Sources) > 0 && !t.sourcesOnly {
+	if len(res.Sources) > 0 && !t.profile.SourcesOnly {
 		text += "\n\nSources:"
 		for i, src := range res.Sources {
 			if src.URL != "" {
@@ -1429,7 +1438,7 @@ func (t *grokSearchTool) Call(ctx context.Context, args map[string]any) (ToolCal
 }
 
 func (t *grokSearchTool) cacheKey(query, model string, maxTokens int) string {
-	raw := fmt.Sprintf("%s\x00%t\x00%t\x00%s\x00%d\x00%s", t.name, t.jsonMode, t.sourcesOnly, model, maxTokens, strings.TrimSpace(query))
+	raw := fmt.Sprintf("%s\x00%t\x00%t\x00%s\x00%d\x00%s", t.profile.Name, t.profile.JSONMode, t.profile.SourcesOnly, model, maxTokens, strings.TrimSpace(query))
 	sum := sha256.Sum256([]byte(raw))
 	return "grok:" + hex.EncodeToString(sum[:])
 }

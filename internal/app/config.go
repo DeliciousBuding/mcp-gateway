@@ -36,30 +36,62 @@ type Config struct {
 	Logger               *slog.Logger
 }
 
+type ModelProfile struct {
+	Name     string
+	Provider string
+	Model    string
+}
+
+type ToolProfile struct {
+	Name        string
+	Title       string
+	Capability  string
+	Provider    string
+	ModelRef    string
+	Description string
+	JSONMode    bool
+	SourcesOnly bool
+}
+
 type RedactedConfig struct {
-	Addr                     string   `json:"addr"`
-	PublicBaseURL            string   `json:"public_base_url,omitempty"`
-	DatabaseURL              string   `json:"database_url"`
-	GrokEnabled              bool     `json:"grok_enabled"`
-	GrokAPIURLConfigured     bool     `json:"grok_api_url_configured"`
-	GrokAPIKeyConfigured     bool     `json:"grok_api_key_configured"`
-	GrokDefaultModel         string   `json:"grok_default_model,omitempty"`
-	GrokMaxQueryBytes        int      `json:"grok_max_query_bytes"`
-	GrokMaxResponseBytes     int64    `json:"grok_max_response_bytes"`
-	APIKeyCount              int      `json:"api_key_count"`
-	ScopedAPIKeyCount        int      `json:"scoped_api_key_count"`
-	AllowedOrigins           []string `json:"allowed_origins,omitempty"`
-	AuthorizationServerCount int      `json:"authorization_server_count"`
-	ProtectMetrics           bool     `json:"protect_metrics"`
-	UpstreamTimeout          string   `json:"upstream_timeout"`
-	MaxConcurrency           int      `json:"max_concurrency"`
-	RateLimitPerMin          int      `json:"rate_limit_per_min"`
-	MaxBodyBytes             int64    `json:"max_body_bytes"`
-	CacheTTL                 string   `json:"cache_ttl"`
-	AuditRetention           string   `json:"audit_retention"`
-	AuditRemoteAddr          bool     `json:"audit_remote_addr"`
-	CleanupInterval          string   `json:"cleanup_interval"`
-	BrowserOriginProtection  bool     `json:"browser_origin_protection"`
+	Addr                     string                 `json:"addr"`
+	PublicBaseURL            string                 `json:"public_base_url,omitempty"`
+	DatabaseURL              string                 `json:"database_url"`
+	GrokEnabled              bool                   `json:"grok_enabled"`
+	GrokAPIURLConfigured     bool                   `json:"grok_api_url_configured"`
+	GrokAPIKeyConfigured     bool                   `json:"grok_api_key_configured"`
+	GrokDefaultModel         string                 `json:"grok_default_model,omitempty"`
+	GrokMaxQueryBytes        int                    `json:"grok_max_query_bytes"`
+	GrokMaxResponseBytes     int64                  `json:"grok_max_response_bytes"`
+	APIKeyCount              int                    `json:"api_key_count"`
+	ScopedAPIKeyCount        int                    `json:"scoped_api_key_count"`
+	AllowedOrigins           []string               `json:"allowed_origins,omitempty"`
+	AuthorizationServerCount int                    `json:"authorization_server_count"`
+	Models                   []RedactedModelProfile `json:"models,omitempty"`
+	ToolProfiles             []RedactedToolProfile  `json:"tool_profiles,omitempty"`
+	ProtectMetrics           bool                   `json:"protect_metrics"`
+	UpstreamTimeout          string                 `json:"upstream_timeout"`
+	MaxConcurrency           int                    `json:"max_concurrency"`
+	RateLimitPerMin          int                    `json:"rate_limit_per_min"`
+	MaxBodyBytes             int64                  `json:"max_body_bytes"`
+	CacheTTL                 string                 `json:"cache_ttl"`
+	AuditRetention           string                 `json:"audit_retention"`
+	AuditRemoteAddr          bool                   `json:"audit_remote_addr"`
+	CleanupInterval          string                 `json:"cleanup_interval"`
+	BrowserOriginProtection  bool                   `json:"browser_origin_protection"`
+}
+
+type RedactedModelProfile struct {
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+}
+
+type RedactedToolProfile struct {
+	Name       string `json:"name"`
+	Capability string `json:"capability"`
+	Provider   string `json:"provider"`
+	ModelRef   string `json:"model_ref"`
 }
 
 func CheckConfig(c Config) error {
@@ -99,6 +131,9 @@ func (c Config) normalized() Config {
 	}
 	if c.GrokMaxResponseBytes == 0 {
 		c.GrokMaxResponseBytes = 4 << 20
+	}
+	if c.GrokDefaultModel == "" {
+		c.GrokDefaultModel = "grok-4.3-fast"
 	}
 	if len(c.AllowedOrigins) == 0 && c.PublicBaseURL != "" {
 		if u, err := url.Parse(c.PublicBaseURL); err == nil && u.Scheme != "" && u.Host != "" {
@@ -173,6 +208,25 @@ func (c Config) redacted() RedactedConfig {
 			scoped++
 		}
 	}
+	models := c.modelProfiles()
+	redactedModels := make([]RedactedModelProfile, 0, len(models))
+	for _, profile := range models {
+		redactedModels = append(redactedModels, RedactedModelProfile{
+			Name:     profile.Name,
+			Provider: profile.Provider,
+			Model:    profile.Model,
+		})
+	}
+	toolProfiles := c.toolProfiles()
+	redactedTools := make([]RedactedToolProfile, 0, len(toolProfiles))
+	for _, profile := range toolProfiles {
+		redactedTools = append(redactedTools, RedactedToolProfile{
+			Name:       profile.Name,
+			Capability: profile.Capability,
+			Provider:   profile.Provider,
+			ModelRef:   profile.ModelRef,
+		})
+	}
 	return RedactedConfig{
 		Addr:                     c.Addr,
 		PublicBaseURL:            c.PublicBaseURL,
@@ -187,6 +241,8 @@ func (c Config) redacted() RedactedConfig {
 		ScopedAPIKeyCount:        scoped,
 		AllowedOrigins:           append([]string(nil), c.AllowedOrigins...),
 		AuthorizationServerCount: len(c.AuthorizationServers),
+		Models:                   redactedModels,
+		ToolProfiles:             redactedTools,
 		ProtectMetrics:           c.ProtectMetrics,
 		UpstreamTimeout:          c.UpstreamTimeout.String(),
 		MaxConcurrency:           c.MaxConcurrency,
@@ -197,6 +253,51 @@ func (c Config) redacted() RedactedConfig {
 		AuditRemoteAddr:          c.AuditRemoteAddr,
 		CleanupInterval:          c.CleanupInterval.String(),
 		BrowserOriginProtection:  true,
+	}
+}
+
+func (c Config) modelProfiles() []ModelProfile {
+	if c.GrokDisabled {
+		return nil
+	}
+	return []ModelProfile{{
+		Name:     "grok.default",
+		Provider: "grok",
+		Model:    c.GrokDefaultModel,
+	}}
+}
+
+func (c Config) toolProfiles() []ToolProfile {
+	if c.GrokDisabled {
+		return nil
+	}
+	return []ToolProfile{
+		{
+			Name:        "grok_search",
+			Title:       "Grok Search",
+			Capability:  "web_search",
+			Provider:    "grok",
+			ModelRef:    "grok.default",
+			Description: "Search the web through the configured Grok upstream and return an answer with sources.",
+		},
+		{
+			Name:        "grok_extract",
+			Title:       "Grok Extract",
+			Capability:  "web_extract",
+			Provider:    "grok",
+			ModelRef:    "grok.default",
+			Description: "Extract structured JSON from web context through the configured Grok upstream.",
+			JSONMode:    true,
+		},
+		{
+			Name:        "grok_sources",
+			Title:       "Grok Sources",
+			Capability:  "web_sources",
+			Provider:    "grok",
+			ModelRef:    "grok.default",
+			Description: "Return only sources discovered by the configured Grok upstream.",
+			SourcesOnly: true,
+		},
 	}
 }
 
