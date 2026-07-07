@@ -1139,6 +1139,56 @@ func TestRejectsMalformedScopedAPIKey(t *testing.T) {
 	}
 }
 
+func TestRejectsInvalidAPIKeyScopes(t *testing.T) {
+	t.Parallel()
+
+	for _, entry := range []string{
+		"bad-scope-token=unknown",
+		"empty-tool-scope-token=tool:",
+		"empty-provider-scope-token=provider:",
+	} {
+		t.Run(entry, func(t *testing.T) {
+			srv, err := app.NewServer(app.Config{
+				Addr:             "127.0.0.1:0",
+				PublicBaseURL:    "http://example.invalid",
+				DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+				GrokAPIURL:       "http://127.0.0.1:1",
+				GrokAPIKey:       "upstream-key",
+				GrokDefaultModel: "grok-test",
+				APIKeys:          []string{entry},
+				UpstreamTimeout:  time.Second,
+				MaxConcurrency:   4,
+				RateLimitPerMin:  60,
+			})
+			if err == nil {
+				_ = srv.Close(context.Background())
+				t.Fatal("NewServer succeeded with invalid API key scope")
+			}
+		})
+	}
+}
+
+func TestAcceptsWildcardAPIKeyScope(t *testing.T) {
+	t.Parallel()
+
+	srv, err := app.NewServer(app.Config{
+		Addr:             "127.0.0.1:0",
+		PublicBaseURL:    "http://example.invalid",
+		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:       "http://127.0.0.1:1",
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"wildcard-token=*"},
+		UpstreamTimeout:  time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  60,
+	})
+	if err != nil {
+		t.Fatalf("NewServer rejected wildcard API key scope: %v", err)
+	}
+	t.Cleanup(func() { _ = srv.Close(context.Background()) })
+}
+
 func TestRejectsAPIKeyTokenWithWhitespace(t *testing.T) {
 	t.Parallel()
 

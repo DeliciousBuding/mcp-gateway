@@ -49,7 +49,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Use long per-agent bearer tokens in `MCP_GATEWAY_API_KEYS`. Bare tokens can use all tools; scoped tokens use `token=scope1|scope2`.
 - Authorization uses the standard `Bearer <token>` form; the auth scheme is case-insensitive, but malformed headers with missing or extra fields are rejected.
 - Current tool scopes include `tool:grok_search`, `tool:grok_extract`, `tool:grok_sources`, provider-wide `provider:grok`, and wildcard `*`.
-- API key configuration is strict: duplicate tokens, empty tokens, and empty or malformed scoped token lists fail startup.
+- API key configuration is strict: duplicate tokens, empty tokens, whitespace in tokens, empty or malformed scoped token lists, and unsupported scope formats fail startup.
 - HTTPS `MCP_GATEWAY_PUBLIC_BASE_URL` requires at least one API key at startup; this prevents accidental anonymous public exposure.
 - `GROK_API_URL`, `MCP_GATEWAY_PUBLIC_BASE_URL`, `MCP_GATEWAY_ALLOWED_ORIGINS`, and `MCP_GATEWAY_AUTHORIZATION_SERVERS` are validated at startup to catch malformed deployment config early. `GROK_API_URL` is required only when `GROK_ENABLED=true`.
 - Run `mcp-gateway --check-config` in CI or before deployment. It validates effective configuration and exits without opening SQLite or listening on a port.

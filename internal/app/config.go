@@ -223,8 +223,12 @@ func validateAPIKeys(entries []string) error {
 			for _, part := range strings.FieldsFunc(after, func(r rune) bool {
 				return r == '|' || r == ';' || r == ' '
 			}) {
-				if strings.TrimSpace(part) == "" {
+				scope := strings.TrimSpace(part)
+				if scope == "" {
 					return fmt.Errorf("api key %q has malformed scope list", token)
+				}
+				if err := validateAPIKeyScope(scope); err != nil {
+					return fmt.Errorf("api key %q has invalid scope %q: %w", token, scope, err)
 				}
 			}
 			if strings.HasSuffix(strings.TrimSpace(after), "|") || strings.HasSuffix(strings.TrimSpace(after), ";") {
@@ -243,4 +247,22 @@ func validateAPIKeys(entries []string) error {
 		seen[token] = struct{}{}
 	}
 	return nil
+}
+
+func validateAPIKeyScope(scope string) error {
+	if scope == "*" {
+		return nil
+	}
+	if strings.IndexFunc(scope, unicode.IsSpace) >= 0 {
+		return errors.New("scope cannot contain whitespace")
+	}
+	for _, prefix := range []string{"tool:", "provider:"} {
+		if strings.HasPrefix(scope, prefix) {
+			if strings.TrimSpace(strings.TrimPrefix(scope, prefix)) == "" {
+				return errors.New("scope suffix cannot be empty")
+			}
+			return nil
+		}
+	}
+	return errors.New("scope must be *, tool:<name>, or provider:<name>")
 }
