@@ -56,7 +56,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Run `mcp-gateway --print-config` during deployment diagnostics. It validates effective configuration, prints redacted JSON, and exits without opening SQLite or listening on a port.
 - Run `mcp-gateway --version` to print build metadata. Release builds can inject `Version`, `Commit`, and `Date` with Go ldflags or Docker build args.
 - Set `MCP_GATEWAY_ALLOWED_ORIGINS` for browser-based clients. This is the DNS rebinding/CORS boundary: requests that carry an `Origin` header are rejected unless the origin is explicitly allowed or derived from `MCP_GATEWAY_PUBLIC_BASE_URL`; non-browser agents without an `Origin` header continue to work.
-- Browser preflight responses allow `Authorization`, `Content-Type`, `Accept`, `MCP-Protocol-Version`, `X-Request-Id`, and `Mcp-Session-Id`.
+- Browser preflight responses allow only `Authorization`, `Content-Type`, `Accept`, `MCP-Protocol-Version`, `X-Request-Id`, and `Mcp-Session-Id`.
 - Set `MCP_GATEWAY_AUTHORIZATION_SERVERS` when an OAuth issuer should be advertised to OAuth-aware MCP clients.
 - Keep `MCP_GATEWAY_PROTECT_METRICS=true` on public hosts unless a private network or reverse proxy already protects `/metrics`.
 - Unauthorized MCP responses include `WWW-Authenticate: Bearer resource_metadata="..."`, pointing clients at the RFC 9728 protected-resource metadata URL. For path-based resources such as `/mcp`, the gateway also serves `/.well-known/oauth-protected-resource/mcp` while keeping the root well-known endpoint for compatibility.

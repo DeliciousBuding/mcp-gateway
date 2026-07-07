@@ -429,12 +429,40 @@ func (s *Server) withSecurity(next http.HandlerFunc) http.HandlerFunc {
 				writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 				return
 			}
+			if !allowedPreflightHeaders(r.Header.Values("Access-Control-Request-Headers")) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unsupported access-control-request-headers"})
+				return
+			}
 			w.Header().Set("Access-Control-Allow-Methods", "POST")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, MCP-Protocol-Version, X-Request-Id, Mcp-Session-Id")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		next(w, r)
+	}
+}
+
+func allowedPreflightHeaders(values []string) bool {
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			header := strings.ToLower(strings.TrimSpace(part))
+			if header == "" {
+				continue
+			}
+			if !isAllowedPreflightHeader(header) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func isAllowedPreflightHeader(header string) bool {
+	switch header {
+	case "authorization", "content-type", "accept", "mcp-protocol-version", "x-request-id", "mcp-session-id":
+		return true
+	default:
+		return false
 	}
 }
 
