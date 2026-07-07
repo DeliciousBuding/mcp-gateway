@@ -61,6 +61,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Browser preflight responses allow only `Authorization`, `Content-Type`, `Accept`, `MCP-Protocol-Version`, `X-Request-Id`, and `Mcp-Session-Id`.
 - Set `MCP_GATEWAY_AUTHORIZATION_SERVERS` when an OAuth issuer should be advertised to OAuth-aware MCP clients.
 - Keep `MCP_GATEWAY_PROTECT_METRICS=true` on public hosts unless a private network or reverse proxy already protects `/metrics`.
+- `GROK_API_URL` must use HTTPS unless it points at loopback for local development or a same-host reverse proxy.
 - Unauthorized MCP responses include `WWW-Authenticate: Bearer resource_metadata="..."`, pointing clients at the RFC 9728 protected-resource metadata URL. For path-based resources such as `/mcp`, the gateway also serves `/.well-known/oauth-protected-resource/mcp` while keeping the root well-known endpoint for compatibility.
 - MCP Streamable HTTP `POST /mcp` requires `Content-Type: application/json` and an `Accept` header compatible with both `application/json` and `text/event-stream`.
 - `Accept` entries with `q=0` or invalid q weights are treated as not acceptable when checking MCP Streamable HTTP response media types.

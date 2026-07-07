@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -112,7 +113,7 @@ func (c Config) validate() error {
 		return err
 	}
 	if !c.GrokDisabled {
-		if err := validateHTTPURL("grok API URL", c.GrokAPIURL); err != nil {
+		if err := validateGrokAPIURL(c.GrokAPIURL); err != nil {
 			return err
 		}
 	}
@@ -200,14 +201,39 @@ func (c Config) redacted() RedactedConfig {
 }
 
 func validateHTTPURL(label, rawURL string) error {
-	u, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return fmt.Errorf("invalid %s %q", label, rawURL)
+	_, err := parseHTTPURL(label, rawURL)
+	return err
+}
+
+func validateGrokAPIURL(rawURL string) error {
+	u, err := parseHTTPURL("grok API URL", rawURL)
+	if err != nil {
+		return err
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("invalid %s scheme %q", label, u.Scheme)
+	if u.Scheme == "http" && !isLoopbackHost(u.Hostname()) {
+		return errors.New("grok API URL must use HTTPS unless the host is loopback")
 	}
 	return nil
+}
+
+func parseHTTPURL(label, rawURL string) (*url.URL, error) {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("invalid %s %q", label, rawURL)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("invalid %s scheme %q", label, u.Scheme)
+	}
+	return u, nil
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func validateOrigin(origin string) error {

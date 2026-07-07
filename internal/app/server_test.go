@@ -1417,7 +1417,7 @@ func TestRejectsInvalidPublicBaseURL(t *testing.T) {
 func TestRejectsInvalidGrokAPIURL(t *testing.T) {
 	t.Parallel()
 
-	for _, rawURL := range []string{"", "ftp://api.example.invalid/v1/chat/completions", "://bad"} {
+	for _, rawURL := range []string{"", "ftp://api.example.invalid/v1/chat/completions", "://bad", "http://api.example.invalid/v1/chat/completions"} {
 		t.Run(rawURL, func(t *testing.T) {
 			srv, err := app.NewServer(app.Config{
 				Addr:             "127.0.0.1:0",
@@ -1435,6 +1435,35 @@ func TestRejectsInvalidGrokAPIURL(t *testing.T) {
 				_ = srv.Close(context.Background())
 				t.Fatalf("NewServer succeeded with Grok API URL %q", rawURL)
 			}
+		})
+	}
+}
+
+func TestAllowsLoopbackHTTPGrokAPIURL(t *testing.T) {
+	t.Parallel()
+
+	for _, rawURL := range []string{
+		"http://localhost:8080/v1/chat/completions",
+		"http://127.0.0.1:8080/v1/chat/completions",
+		"http://[::1]:8080/v1/chat/completions",
+	} {
+		t.Run(rawURL, func(t *testing.T) {
+			srv, err := app.NewServer(app.Config{
+				Addr:             "127.0.0.1:0",
+				PublicBaseURL:    "http://example.invalid",
+				DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+				GrokAPIURL:       rawURL,
+				GrokAPIKey:       "upstream-key",
+				GrokDefaultModel: "grok-test",
+				APIKeys:          []string{"test-token"},
+				UpstreamTimeout:  time.Second,
+				MaxConcurrency:   4,
+				RateLimitPerMin:  60,
+			})
+			if err != nil {
+				t.Fatalf("NewServer rejected loopback Grok API URL %q: %v", rawURL, err)
+			}
+			t.Cleanup(func() { _ = srv.Close(context.Background()) })
 		})
 	}
 }

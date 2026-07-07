@@ -57,6 +57,25 @@ func TestCheckConfigReturnsValidationErrors(t *testing.T) {
 	}
 }
 
+func TestCheckConfigRejectsRemoteHTTPGrokAPIURL(t *testing.T) {
+	var stdout bytes.Buffer
+
+	err := runWithArgs([]string{
+		"-check-config",
+		"-grok-api-url", "http://api.example.com/v1/chat/completions",
+	}, map[string]string{}, &stdout)
+
+	if err == nil {
+		t.Fatal("expected check-config to reject remote HTTP Grok API URL")
+	}
+	if !strings.Contains(err.Error(), "must use HTTPS unless the host is loopback") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no success output, got %q", stdout.String())
+	}
+}
+
 func TestCheckConfigRejectsAPIKeyTokenWithWhitespace(t *testing.T) {
 	var stdout bytes.Buffer
 
