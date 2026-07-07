@@ -308,6 +308,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/.well-known/oauth-protected-resource", s.handleOAuthProtectedResourceMetadata)
 	s.mux.HandleFunc("/.well-known/oauth-protected-resource/", s.handleOAuthProtectedResourceMetadata)
 	s.mux.HandleFunc("/mcp", s.trackHTTP("/mcp", s.withSecurity(s.auth(s.handleMCP))))
+	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		writeNotFound(w)
+	})
 }
 
 func allowGETOrHEAD(w http.ResponseWriter, r *http.Request) bool {
@@ -363,7 +366,7 @@ func (s *Server) handleOAuthProtectedResourceMetadata(w http.ResponseWriter, r *
 	setSecurityHeaders(w)
 	metadataPath := s.protectedResourceMetadataPath()
 	if r.URL.Path != "/.well-known/oauth-protected-resource" && r.URL.Path != metadataPath {
-		http.NotFound(w, r)
+		writeNotFound(w)
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -382,6 +385,11 @@ func (s *Server) handleOAuthProtectedResourceMetadata(w http.ResponseWriter, r *
 		body["authorization_servers"] = s.cfg.AuthorizationServers
 	}
 	writeJSON(w, http.StatusOK, body)
+}
+
+func writeNotFound(w http.ResponseWriter) {
+	setSecurityHeaders(w)
+	writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 }
 
 func (s *Server) withSecurity(next http.HandlerFunc) http.HandlerFunc {

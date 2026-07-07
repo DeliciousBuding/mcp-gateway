@@ -82,6 +82,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Latency histograms are exported as classic Prometheus metrics: `mcp_gateway_http_request_duration_seconds` by route/method/status and `mcp_gateway_tool_call_duration_seconds` by tool/status.
 - `mcp_gateway_build_info` includes version, commit, and build date labels for runtime identification.
 - Dynamic gateway responses include `Cache-Control: no-store` to avoid stale MCP, auth, health, or metrics data behind proxies.
+- Unknown routes return a small JSON `404` with the same security and no-store headers as other gateway responses.
 - Send `X-Request-Id` from upstream proxies or clients when possible. The gateway echoes it back; otherwise it generates a 128-bit hex request id.
 - Access logs are structured JSON and include request id, method, route, status, duration, and the hashed agent id when authenticated. They intentionally do not log bearer tokens, request bodies, tool arguments, or upstream prompts.
 - SQLite audit rows in `tool_calls` include the same request id, so operators can join HTTP logs to tool execution records without storing prompts, tokens, or client addresses by default. Tool-call audit writes use a short background timeout so canceled client requests can still record final status when possible.

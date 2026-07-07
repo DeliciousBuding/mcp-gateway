@@ -130,6 +130,40 @@ func TestOAuthProtectedResourceMetadataRejectsUnrelatedSubpaths(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
+	body := decodeObject(t, rec.Body.Bytes())
+	if body["error"] != "not found" {
+		t.Fatalf("body = %#v, want JSON not found", body)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+}
+
+func TestUnknownRouteReturnsSecureJSONNotFound(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	req := httptest.NewRequest(http.MethodGet, "/unknown/path", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", ct)
+	}
+	body := decodeObject(t, rec.Body.Bytes())
+	if body["error"] != "not found" {
+		t.Fatalf("body = %#v, want JSON not found", body)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
 }
 
 func TestReadyChecksSQLite(t *testing.T) {
