@@ -150,6 +150,33 @@ func TestReadyChecksSQLite(t *testing.T) {
 	}
 }
 
+func TestOperationalReadinessEndpointsRejectUnsupportedMethods(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	for _, path := range []string{"/health", "/ready"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, path, nil)
+			rec := httptest.NewRecorder()
+
+			srv.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			if allow := rec.Header().Get("Allow"); allow != "GET, HEAD" {
+				t.Fatalf("Allow = %q, want GET, HEAD", allow)
+			}
+			if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+			}
+			if got := rec.Header().Get("Referrer-Policy"); got != "no-referrer" {
+				t.Fatalf("Referrer-Policy = %q, want no-referrer", got)
+			}
+		})
+	}
+}
+
 func TestAccessLogIncludesRequestIDAndAgentWithoutSecrets(t *testing.T) {
 	var logs bytes.Buffer
 	srv := newTestServer(t, &app.Config{

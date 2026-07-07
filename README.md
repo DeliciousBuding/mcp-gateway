@@ -77,7 +77,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Limit upstream pressure with `MCP_GATEWAY_MAX_CONCURRENCY` and `MCP_GATEWAY_RATE_LIMIT_PER_MIN`; built-in 429 responses include `Retry-After` for client backoff.
 - Limit MCP JSON request size with `MCP_GATEWAY_MAX_BODY_BYTES` (default `1048576`). Oversized requests return HTTP `413` before JSON-RPC dispatch.
 - Put nginx/Cloudflare rate limits in front of the app for public exposure.
-- Use `/health` for process liveness and `/ready` for SQLite-backed readiness.
+- Use `GET /health` for process liveness and `GET /ready` for SQLite-backed readiness.
 - Scrape `/metrics` with `GET` for lightweight Prometheus-compatible process metrics without adding a metrics SDK dependency. Labels are intentionally low-cardinality: route, method, status, RPC method/status, tool/status, and tool/cache result only.
 - Latency histograms are exported as classic Prometheus metrics: `mcp_gateway_http_request_duration_seconds` by route/method/status and `mcp_gateway_tool_call_duration_seconds` by tool/status.
 - `mcp_gateway_build_info` includes version, commit, and build date labels for runtime identification.

@@ -264,10 +264,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() {
 	s.mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		setSecurityHeaders(w)
+		if !allowGETOrHEAD(w, r) {
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "mcp-gateway"})
 	})
 	s.mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		setSecurityHeaders(w)
+		if !allowGETOrHEAD(w, r) {
+			return
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()
 		if err := s.store.Ping(ctx); err != nil {
@@ -278,9 +284,7 @@ func (s *Server) routes() {
 	})
 	s.mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		setSecurityHeaders(w)
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			w.Header().Set("Allow", "GET, HEAD")
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		if !allowGETOrHEAD(w, r) {
 			return
 		}
 		if s.cfg.ProtectMetrics {
@@ -304,6 +308,15 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/.well-known/oauth-protected-resource", s.handleOAuthProtectedResourceMetadata)
 	s.mux.HandleFunc("/.well-known/oauth-protected-resource/", s.handleOAuthProtectedResourceMetadata)
 	s.mux.HandleFunc("/mcp", s.trackHTTP("/mcp", s.withSecurity(s.auth(s.handleMCP))))
+}
+
+func allowGETOrHEAD(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		return true
+	}
+	w.Header().Set("Allow", "GET, HEAD")
+	writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+	return false
 }
 
 func (s *Server) trackHTTP(route string, next http.HandlerFunc) http.HandlerFunc {
