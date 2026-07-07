@@ -177,6 +177,45 @@ func TestOperationalReadinessEndpointsRejectUnsupportedMethods(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersDisableCaching(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	for _, tc := range []struct {
+		name string
+		req  *http.Request
+	}{
+		{name: "health", req: httptest.NewRequest(http.MethodGet, "/health", nil)},
+		{name: "ready", req: httptest.NewRequest(http.MethodGet, "/ready", nil)},
+		{name: "metrics", req: httptest.NewRequest(http.MethodGet, "/metrics", nil)},
+		{name: "mcp unauthorized", req: httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))},
+		{name: "oauth metadata", req: httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.req.URL.Path == "/mcp" {
+				tc.req.Header.Set("Content-Type", "application/json")
+				tc.req.Header.Set("Accept", "application/json, text/event-stream")
+			}
+			rec := httptest.NewRecorder()
+
+			srv.ServeHTTP(rec, tc.req)
+
+			if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+				t.Fatalf("Cache-Control = %q, want no-store", got)
+			}
+			if got := rec.Header().Get("Pragma"); got != "no-cache" {
+				t.Fatalf("Pragma = %q, want no-cache", got)
+			}
+			if got := rec.Header().Get("Expires"); got != "0" {
+				t.Fatalf("Expires = %q, want 0", got)
+			}
+			if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+			}
+		})
+	}
+}
+
 func TestAccessLogIncludesRequestIDAndAgentWithoutSecrets(t *testing.T) {
 	var logs bytes.Buffer
 	srv := newTestServer(t, &app.Config{
