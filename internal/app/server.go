@@ -343,6 +343,11 @@ func (w *statusRecorder) setAgentID(agentID string) {
 
 func (s *Server) handleOAuthProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
 	setSecurityHeaders(w)
+	metadataPath := s.protectedResourceMetadataPath()
+	if r.URL.Path != "/.well-known/oauth-protected-resource" && r.URL.Path != metadataPath {
+		http.NotFound(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
@@ -457,14 +462,24 @@ func (s *Server) protectedResourceMetadataURL() string {
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return "/.well-known/oauth-protected-resource"
 	}
-	resourcePath := strings.TrimLeft(u.Path, "/")
-	u.Path = "/.well-known/oauth-protected-resource"
-	if resourcePath != "" {
-		u.Path += "/" + resourcePath
-	}
+	u.Path = s.protectedResourceMetadataPath()
 	u.RawQuery = ""
 	u.Fragment = ""
 	return u.String()
+}
+
+func (s *Server) protectedResourceMetadataPath() string {
+	const metadataPath = "/.well-known/oauth-protected-resource"
+	resource := s.resourceURL()
+	u, err := url.Parse(resource)
+	if err != nil {
+		return metadataPath
+	}
+	resourcePath := strings.TrimLeft(u.Path, "/")
+	if resourcePath == "" {
+		return metadataPath
+	}
+	return metadataPath + "/" + resourcePath
 }
 
 func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {

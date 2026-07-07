@@ -105,6 +105,31 @@ func TestOAuthProtectedResourceMetadata(t *testing.T) {
 	}
 }
 
+func TestOAuthProtectedResourceMetadataRejectsUnrelatedSubpaths(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, &app.Config{
+		Addr:             "127.0.0.1:0",
+		PublicBaseURL:    "https://mcp.example.com/mcp",
+		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		GrokAPIURL:       "http://127.0.0.1:1",
+		GrokAPIKey:       "upstream-key",
+		GrokDefaultModel: "grok-test",
+		APIKeys:          []string{"test-token"},
+		UpstreamTimeout:  time.Second,
+		MaxConcurrency:   4,
+		RateLimitPerMin:  60,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource/other", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestReadyChecksSQLite(t *testing.T) {
 	t.Parallel()
 
