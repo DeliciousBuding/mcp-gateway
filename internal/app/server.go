@@ -387,6 +387,10 @@ func (s *Server) handleOAuthProtectedResourceMetadata(w http.ResponseWriter, r *
 	}
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")
+		if r.Method == http.MethodHead {
+			writeJSONHead(w, http.StatusMethodNotAllowed)
+			return
+		}
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 		return
 	}
@@ -561,6 +565,10 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
+		if r.Method == http.MethodHead {
+			writeJSONHead(w, http.StatusMethodNotAllowed)
+			return
+		}
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 		return
 	}

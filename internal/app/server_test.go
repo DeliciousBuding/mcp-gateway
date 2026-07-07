@@ -139,6 +139,29 @@ func TestOAuthProtectedResourceMetadataRejectsUnrelatedSubpaths(t *testing.T) {
 	}
 }
 
+func TestOAuthProtectedResourceMetadataHeadReturnsNoBody(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	req := httptest.NewRequest(http.MethodHead, "/.well-known/oauth-protected-resource", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("body = %q, want empty", rec.Body.String())
+	}
+	if got := rec.Header().Get("Allow"); got != "GET" {
+		t.Fatalf("Allow = %q, want GET", got)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", ct)
+	}
+}
+
 func TestUnknownRouteReturnsSecureJSONNotFound(t *testing.T) {
 	t.Parallel()
 
@@ -1720,6 +1743,33 @@ func TestMCPDeleteReturnsMethodNotAllowedWhenSessionsDisabled(t *testing.T) {
 	}
 	if allow := rec.Header().Get("Allow"); allow != "POST" {
 		t.Fatalf("Allow = %q, want POST", allow)
+	}
+}
+
+func TestMCPHeadReturnsMethodNotAllowedWithoutBody(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	req := httptest.NewRequest(http.MethodHead, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("body = %q, want empty", rec.Body.String())
+	}
+	if got := rec.Header().Get("Allow"); got != "POST" {
+		t.Fatalf("Allow = %q, want POST", got)
+	}
+	if got := rec.Header().Get("MCP-Protocol-Version"); got != "2025-06-18" {
+		t.Fatalf("MCP-Protocol-Version = %q", got)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", ct)
 	}
 }
 
