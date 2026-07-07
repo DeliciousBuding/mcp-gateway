@@ -220,12 +220,13 @@ func TestAccessLogGeneratesRequestIDWhenMissing(t *testing.T) {
 	}
 }
 
-func TestPanicRecoveryReturnsStableErrorAndMetrics(t *testing.T) {
+func TestToolPanicReturnsStableToolErrorAndAudit(t *testing.T) {
 	var logs bytes.Buffer
+	dbPath := filepath.Join(t.TempDir(), "panic-audit.db")
 	srv, err := app.NewServer(app.Config{
 		Addr:             "127.0.0.1:0",
 		PublicBaseURL:    "http://example.invalid",
-		DatabaseURL:      filepath.Join(t.TempDir(), "audit.db"),
+		DatabaseURL:      dbPath,
 		GrokAPIURL:       "http://127.0.0.1:1",
 		GrokAPIKey:       "upstream-key",
 		GrokDefaultModel: "grok-test",
@@ -247,21 +248,27 @@ func TestPanicRecoveryReturnsStableErrorAndMetrics(t *testing.T) {
 
 	srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusInternalServerError {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	if got := rec.Header().Get("X-Request-Id"); got != "req-panic-123" {
 		t.Fatalf("X-Request-Id = %q, want req-panic-123", got)
 	}
 	body := decodeObject(t, rec.Body.Bytes())
-	if body["error"] != "internal server error" || body["request_id"] != "req-panic-123" {
-		t.Fatalf("unexpected body: %#v", body)
+	result := body["result"].(map[string]any)
+	if result["isError"] != true {
+		t.Fatalf("result = %#v, want tool error", result)
+	}
+	content := result["content"].([]any)
+	text := content[0].(map[string]any)["text"].(string)
+	if text != "tool execution failed" {
+		t.Fatalf("tool error text = %q", text)
 	}
 	logText := logs.String()
 	for _, want := range []string{
 		`"msg":"http_request"`,
 		`"request_id":"req-panic-123"`,
-		`"status":500`,
+		`"status":200`,
 	} {
 		if !bytes.Contains([]byte(logText), []byte(want)) {
 			t.Fatalf("access log missing %q in %s", want, logText)
@@ -276,9 +283,22 @@ func TestPanicRecoveryReturnsStableErrorAndMetrics(t *testing.T) {
 	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	metricsRec := httptest.NewRecorder()
 	srv.ServeHTTP(metricsRec, metricsReq)
-	wantMetric := `mcp_gateway_http_requests_total{route="/mcp",method="POST",status="500"} 1`
+	wantMetric := `mcp_gateway_tool_calls_total{tool="panic_tool",status="error"} 1`
 	if !bytes.Contains(metricsRec.Body.Bytes(), []byte(wantMetric)) {
 		t.Fatalf("metrics missing %q in:\n%s", wantMetric, metricsRec.Body.String())
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var status, errText string
+	if err := db.QueryRowContext(context.Background(), `select status, error_text from tool_calls where request_id='req-panic-123'`).Scan(&status, &errText); err != nil {
+		t.Fatal(err)
+	}
+	if status != "error" || errText != "tool execution failed" {
+		t.Fatalf("audit status=%q error_text=%q, want stable tool panic error", status, errText)
 	}
 }
 

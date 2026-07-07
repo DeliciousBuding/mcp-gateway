@@ -675,7 +675,7 @@ func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, req rpcR
 		writeRPC(w, req.ID, nil, rpcError{-32000, "request canceled"})
 		return
 	}
-	result, err := tool.Call(r.Context(), params.Arguments)
+	result, err := callToolSafely(r.Context(), tool, params.Arguments)
 	sourceCnt = result.SourceCnt
 	if err != nil {
 		s.metrics.incRPC(req.Method, "error")
@@ -700,6 +700,16 @@ func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, req rpcR
 		"structuredContent": result.Structured,
 		"isError":           result.IsError,
 	}, rpcError{})
+}
+
+func callToolSafely(ctx context.Context, tool Tool, args map[string]any) (result ToolCallResult, err error) {
+	defer func() {
+		if recover() != nil {
+			result = ToolCallResult{}
+			err = errors.New("tool execution failed")
+		}
+	}()
+	return tool.Call(ctx, args)
 }
 
 func (s *Server) writeMetrics(w io.Writer) {

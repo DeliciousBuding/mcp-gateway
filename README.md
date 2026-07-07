@@ -85,7 +85,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Access logs are structured JSON and include request id, method, route, status, duration, and the hashed agent id when authenticated. They intentionally do not log bearer tokens, request bodies, tool arguments, or upstream prompts.
 - SQLite audit rows in `tool_calls` include the same request id, so operators can join HTTP logs to tool execution records without storing prompts, tokens, or client addresses by default. Tool-call audit writes use a short background timeout so canceled client requests can still record final status when possible.
 - Provider failures are sanitized before returning to clients or audit rows: non-2xx responses are reported by status and body size only, and transport errors do not include upstream URLs or paths.
-- HTTP panic recovery turns unexpected provider/tool panics into a stable `500` JSON response, records the request id, and avoids logging request bodies or bearer tokens.
+- Tool panics are recovered into stable MCP tool errors without exposing panic details; outer HTTP panic recovery remains as a final `500` safeguard with the request id and no request body or bearer token logging.
 
 ## Provider configuration
 
@@ -112,7 +112,7 @@ Set `GROK_ENABLED=false` to run the gateway without registering Grok tools. This
 - Tool definitions expose MCP metadata (`title`, `annotations`, `outputSchema`) so clients can reason about safety and display.
 - JSON structured logs through Go `slog`, including one access log event per HTTP request.
 - Graceful shutdown and conservative HTTP timeouts.
-- Outer HTTP panic recovery so one faulty tool call cannot crash the gateway process.
+- Tool-level panic recovery plus outer HTTP panic recovery so one faulty tool call cannot crash the gateway process.
 - Configurable MCP request body limit for memory protection on public deployments.
 - SQLite audit table: `tool_calls`, indexed by timestamp, tool/status, and request id.
 
