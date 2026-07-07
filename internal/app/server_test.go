@@ -1108,25 +1108,52 @@ func TestJSONRPCNotificationWithoutIDReturnsNoBody(t *testing.T) {
 	}
 }
 
-func TestJSONRPCNullIDIsStillARequest(t *testing.T) {
+func TestMCPRejectsInvalidRequestIDTypes(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServer(t, nil)
-	rec := doMCP(t, srv, `{"jsonrpc":"2.0","id":null,"method":"unknown/request"}`)
+	for _, bodyText := range []string{
+		`{"jsonrpc":"2.0","id":null,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":true,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":{"nested":1},"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":[1],"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":1.5,"method":"tools/list"}`,
+	} {
+		t.Run(bodyText, func(t *testing.T) {
+			rec := doMCP(t, srv, bodyText)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			body := decodeObject(t, rec.Body.Bytes())
+			errObj, ok := body["error"].(map[string]any)
+			if !ok {
+				t.Fatalf("missing error in %s", rec.Body.String())
+			}
+			if errObj["code"] != float64(-32600) {
+				t.Fatalf("error code = %v, want -32600 in %s", errObj["code"], rec.Body.String())
+			}
+		})
+	}
+}
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
-	}
-	body := decodeObject(t, rec.Body.Bytes())
-	errObj, ok := body["error"].(map[string]any)
-	if !ok {
-		t.Fatalf("missing error in %s", rec.Body.String())
-	}
-	if errObj["code"] != float64(-32601) {
-		t.Fatalf("error code = %v, want -32601", errObj["code"])
-	}
-	if _, ok := body["id"]; !ok {
-		t.Fatalf("response omitted explicit null id: %s", rec.Body.String())
+func TestMCPAcceptsStringAndIntegerRequestIDs(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	for _, bodyText := range []string{
+		`{"jsonrpc":"2.0","id":"req-1","method":"ping"}`,
+		`{"jsonrpc":"2.0","id":42,"method":"ping"}`,
+	} {
+		t.Run(bodyText, func(t *testing.T) {
+			rec := doMCP(t, srv, bodyText)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			body := decodeObject(t, rec.Body.Bytes())
+			if _, ok := body["result"].(map[string]any); !ok {
+				t.Fatalf("missing result in %s", rec.Body.String())
+			}
+		})
 	}
 }
 

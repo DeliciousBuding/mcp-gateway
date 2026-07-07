@@ -544,6 +544,10 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		writeRPC(w, req.ID, nil, rpcError{-32600, "invalid request"})
 		return
 	}
+	if req.HasID && !isValidRPCID(req.ID) {
+		writeRPC(w, nil, nil, rpcError{-32600, "invalid request"})
+		return
+	}
 	if !req.HasID {
 		s.metrics.incRPC("notification", "accepted")
 		w.WriteHeader(http.StatusAccepted)
@@ -866,11 +870,28 @@ func (r *rpcRequest) UnmarshalJSON(data []byte) error {
 	r.Params = raw.Params
 	if idRaw, ok := fields["id"]; ok {
 		r.HasID = true
-		if err := json.Unmarshal(idRaw, &r.ID); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(idRaw))
+		decoder.UseNumber()
+		if err := decoder.Decode(&r.ID); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func isValidRPCID(id any) bool {
+	switch v := id.(type) {
+	case string:
+		return true
+	case json.Number:
+		if strings.ContainsAny(v.String(), ".eE") {
+			return false
+		}
+		_, err := strconv.ParseInt(v.String(), 10, 64)
+		return err == nil
+	default:
+		return false
+	}
 }
 
 type rpcError struct {
