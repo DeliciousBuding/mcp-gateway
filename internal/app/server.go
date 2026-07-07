@@ -428,8 +428,19 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) authenticateRequest(r *http.Request) (agentIdentity, bool) {
-	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		return agentIdentity{}, false
+	}
 	return s.lookupAgent(token)
+}
+
+func bearerToken(header string) (string, bool) {
+	parts := strings.Fields(header)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return "", false
+	}
+	return parts[1], true
 }
 
 func (s *Server) writeUnauthorized(w http.ResponseWriter) {

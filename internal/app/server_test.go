@@ -828,6 +828,36 @@ func TestRejectsBlankBearerToken(t *testing.T) {
 	}
 }
 
+func TestBearerAuthSchemeIsCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	req := newMCPRequest(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	req.Header.Set("Authorization", "bearer test-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRejectsMalformedAuthorizationHeader(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, nil)
+	req := newMCPRequest(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	req.Header.Set("Authorization", "Bearer test-token extra")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPublicBaseURLRequiresAPIKeys(t *testing.T) {
 	t.Parallel()
 

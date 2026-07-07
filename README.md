@@ -47,6 +47,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 
 - Keep the public route on a separate host name such as `mcp.example.com`; do not mix it into the model gateway `/v1/*` path.
 - Use long per-agent bearer tokens in `MCP_GATEWAY_API_KEYS`. Bare tokens can use all tools; scoped tokens use `token=scope1|scope2`.
+- Authorization uses the standard `Bearer <token>` form; the auth scheme is case-insensitive, but malformed headers with missing or extra fields are rejected.
 - Current tool scopes include `tool:grok_search`, `tool:grok_extract`, `tool:grok_sources`, provider-wide `provider:grok`, and wildcard `*`.
 - API key configuration is strict: duplicate tokens, empty tokens, and empty or malformed scoped token lists fail startup.
 - HTTPS `MCP_GATEWAY_PUBLIC_BASE_URL` requires at least one API key at startup; this prevents accidental anonymous public exposure.
