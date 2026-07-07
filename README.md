@@ -61,7 +61,7 @@ curl -sS http://127.0.0.1:8787/mcp \
 - Keep `MCP_GATEWAY_PROTECT_METRICS=true` on public hosts unless a private network or reverse proxy already protects `/metrics`.
 - Unauthorized MCP responses include `WWW-Authenticate: Bearer resource_metadata="..."`, pointing clients at the RFC 9728 protected-resource metadata URL. For path-based resources such as `/mcp`, the gateway also serves `/.well-known/oauth-protected-resource/mcp` while keeping the root well-known endpoint for compatibility.
 - MCP Streamable HTTP `POST /mcp` requires `Content-Type: application/json` and an `Accept` header compatible with both `application/json` and `text/event-stream`.
-- `Accept` entries with `q=0` are treated as not acceptable when checking MCP Streamable HTTP response media types.
+- `Accept` entries with `q=0` or invalid q weights are treated as not acceptable when checking MCP Streamable HTTP response media types.
 - Requests with `MCP-Protocol-Version` must use `2025-06-18`; omitted versions are treated as the current supported version.
 - `initialize.params` must include a non-empty string `protocolVersion`, object `capabilities`, and `clientInfo.name`/`clientInfo.version` strings; the gateway responds with its supported `2025-06-18` protocol version.
 - MCP JSON-RPC `ping` is supported and returns an empty result for client/server liveness checks.

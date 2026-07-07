@@ -1497,6 +1497,26 @@ func TestStreamableHTTPHeaderValidation(t *testing.T) {
 		}
 	})
 
+	t.Run("invalid q does not accept required media types", func(t *testing.T) {
+		for _, accept := range []string{
+			"application/json;q=2, text/event-stream",
+			"application/json, text/event-stream;q=NaN",
+			"*/*;q=bogus",
+		} {
+			t.Run(accept, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+				req.Header.Set("Authorization", "Bearer test-token")
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Accept", accept)
+				rec := httptest.NewRecorder()
+				srv.ServeHTTP(rec, req)
+				if rec.Code != http.StatusNotAcceptable {
+					t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+				}
+			})
+		}
+	})
+
 	t.Run("positive q accepts required media types", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
 		req.Header.Set("Authorization", "Bearer test-token")

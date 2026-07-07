@@ -1144,7 +1144,7 @@ func acceptsMCPPost(values []string) bool {
 			}
 			if q, ok := params["q"]; ok {
 				weight, err := strconv.ParseFloat(q, 64)
-				if err != nil || weight <= 0 {
+				if err != nil || math.IsNaN(weight) || math.IsInf(weight, 0) || weight <= 0 || weight > 1 {
 					continue
 				}
 			}
